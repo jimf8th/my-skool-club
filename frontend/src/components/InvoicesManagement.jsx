@@ -34,7 +34,7 @@ const InvoicesManagement = () => {
   
   // Advanced search and filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [_searchLoading, setSearchLoading] = useState(false);
   const [filterModal, setFilterModal] = useState({ show: false });
   const [filters, setFilters] = useState({
     club: '',
@@ -565,7 +565,7 @@ const InvoicesManagement = () => {
       } else {
         setMessage({ type: 'error', text: response.message || 'Failed to submit invoice for approval.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Error submitting invoice for approval.' });
     } finally {
       setLoading(false);
@@ -590,7 +590,7 @@ const InvoicesManagement = () => {
       } else {
         setMessage({ type: 'error', text: response.message || 'Failed to approve invoice.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Error approving invoice.' });
     } finally {
       setLoading(false);
@@ -621,7 +621,7 @@ const InvoicesManagement = () => {
       } else {
         setMessage({ type: 'error', text: response.message || 'Failed to reject invoice.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Error rejecting invoice.' });
     } finally {
       setLoading(false);

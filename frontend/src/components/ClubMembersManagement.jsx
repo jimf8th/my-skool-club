@@ -65,7 +65,7 @@ const ClubMembersManagement = () => {
       setPagination(prev => ({ ...prev, page: 0 })); // Reset to first page
       
       // Fetch club details
-      const clubResponse = await apiService.get(`/clubs/${clubId}`);
+      const _clubResponse = await apiService.get(`/clubs/${clubId}`);
       
       // Fetch club members with pagination
       await fetchClubMembers(clubId, 0, pagination.size);
@@ -135,7 +135,7 @@ const ClubMembersManagement = () => {
     setShowModal(true);
   };
 
-  const handlePromoteToAdmin = async (memberId, memberName) => {
+  const _handlePromoteToAdmin = async (memberId, memberName) => {
     setModalConfig({
       title: 'Promote to Admin',
       message: `Are you sure you want to promote ${memberName} to CLUB_ADMIN? They will have full administrative privileges for this club.`,
@@ -164,7 +164,7 @@ const ClubMembersManagement = () => {
     setShowModal(true);
   };
 
-  const handleDemoteToUser = async (memberId, memberName) => {
+  const _handleDemoteToUser = async (memberId, memberName) => {
     setModalConfig({
       title: 'Demote to User',
       message: `Are you sure you want to demote ${memberName} to CLUB_USER? They will lose their administrative privileges.`,

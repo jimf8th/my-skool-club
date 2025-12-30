@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import apiService from '../services/apiService';
 
 const Announcements = () => {
@@ -26,23 +26,7 @@ const Announcements = () => {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    // Get current member from localStorage
-    const memberData = localStorage.getItem('currentMember');
-    if (memberData) {
-      try {
-        const member = JSON.parse(memberData);
-        setCurrentMember(member);
-        setIsSchoolAdmin(member.role === 'SCHOOL_ADMIN');
-      } catch (error) {
-        console.error('Error parsing member data:', error);
-      }
-    }
-    
-    fetchAnnouncements();
-  }, [pagination.page, pagination.size]);
-
-  const fetchAnnouncements = async () => {
+  const fetchAnnouncements = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -64,7 +48,23 @@ const Announcements = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.page, pagination.size]);
+
+  useEffect(() => {
+    // Get current member from localStorage
+    const memberData = localStorage.getItem('currentMember');
+    if (memberData) {
+      try {
+        const member = JSON.parse(memberData);
+        setCurrentMember(member);
+        setIsSchoolAdmin(member.role === 'SCHOOL_ADMIN');
+      } catch (error) {
+        console.error('Error parsing member data:', error);
+      }
+    }
+    
+    fetchAnnouncements();
+  }, [pagination.page, pagination.size, fetchAnnouncements]);
 
   const handleLogout = () => {
     // Clear all auth data
