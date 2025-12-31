@@ -115,21 +115,21 @@ const SchoolsManagement = () => {
     }));
   };
 
-  const handleAdminEmailChange = (index, value) => {
+  const _handleAdminEmailChange = (index, value) => {
     setNewSchool(prev => ({
       ...prev,
       adminEmails: prev.adminEmails.map((email, i) => i === index ? value : email)
     }));
   };
 
-  const addAdminEmail = () => {
+  const _addAdminEmail = () => {
     setNewSchool(prev => ({
       ...prev,
       adminEmails: [...prev.adminEmails, '']
     }));
   };
 
-  const removeAdminEmail = (index) => {
+  const _removeAdminEmail = (index) => {
     setNewSchool(prev => ({
       ...prev,
       adminEmails: prev.adminEmails.filter((_, i) => i !== index)

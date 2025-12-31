@@ -16,7 +16,7 @@ const ClubsManagement = () => {
   
   // Advanced search and filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [_searchLoading, setSearchLoading] = useState(false);
   const [filterModal, setFilterModal] = useState({ show: false });
   const [filters, setFilters] = useState({
     category: '',
@@ -69,10 +69,10 @@ const ClubsManagement = () => {
   const [editAvailableMembers, setEditAvailableMembers] = useState([]);
   const [editSelectedAdminEmails, setEditSelectedAdminEmails] = useState([]);
   const [editAdminEmailInput, setEditAdminEmailInput] = useState('');
-  const [editShowAdminDropdown, setEditShowAdminDropdown] = useState(false);
-  const [editFilteredMembers, setEditFilteredMembers] = useState([]);
-  const [editLoadingMembers, setEditLoadingMembers] = useState(false);
-  const [currentClubAdmins, setCurrentClubAdmins] = useState([]);
+  const [_editShowAdminDropdown, setEditShowAdminDropdown] = useState(false);
+  const [_editFilteredMembers, setEditFilteredMembers] = useState([]);
+  const [_editLoadingMembers, setEditLoadingMembers] = useState(false);
+  const [_currentClubAdmins, setCurrentClubAdmins] = useState([]);
   const [clubAdminsList, setClubAdminsList] = useState([]);
   const [loadingClubAdmins, setLoadingClubAdmins] = useState(false);
   const [addAdminEmail, setAddAdminEmail] = useState('');
@@ -497,7 +497,7 @@ const ClubsManagement = () => {
   };
 
   // Edit modal admin functions
-  const fetchEditSchoolMembers = async (schoolId) => {
+  const _fetchEditSchoolMembers = async (schoolId) => {
     try {
       setEditLoadingMembers(true);
       const response = await apiService.get(`/members/school/${schoolId}`);
@@ -688,7 +688,7 @@ const ClubsManagement = () => {
     }
   };
 
-  const fetchCurrentClubAdmins = async (clubId) => {
+  const _fetchCurrentClubAdmins = async (clubId) => {
     try {
       console.log('Fetching club admins for clubId:', clubId);
       const response = await apiService.get(`/user-club-roles/club/${clubId}`);
@@ -717,7 +717,7 @@ const ClubsManagement = () => {
     }
   };
 
-  const handleEditAdminEmailChange = (value) => {
+  const _handleEditAdminEmailChange = (value) => {
     setEditAdminEmailInput(value);
     
     if (value.trim().length >= 2) {
@@ -763,15 +763,15 @@ const ClubsManagement = () => {
     setMessage({ type: '', text: '' });
   };
 
-  const handleEditRemoveAdminEmail = (email) => {
+  const _handleEditRemoveAdminEmail = (email) => {
     setEditSelectedAdminEmails(prev => prev.filter(e => e !== email));
   };
 
-  const selectFromEditDropdown = (member) => {
+  const _selectFromEditDropdown = (member) => {
     handleEditAddAdminEmail(member.email.toLowerCase());
   };
 
-  const handleEditAdminEmailKeyPress = (e) => {
+  const _handleEditAdminEmailKeyPress = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleEditAddAdminEmail();

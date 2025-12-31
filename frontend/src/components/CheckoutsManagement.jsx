@@ -77,7 +77,7 @@ const CheckoutsManagement = () => {
 
   // Advanced search and filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [_searchLoading, setSearchLoading] = useState(false);
   const [filterModal, setFilterModal] = useState({ show: false });
   const [filters, setFilters] = useState({
     club: '',
@@ -293,7 +293,7 @@ const CheckoutsManagement = () => {
     } finally {
       setSearchLoading(false);
     }
-  }, [searchQuery, filters, checkouts, sortConfig]);
+  }, [searchQuery, filters, checkouts, sortConfig, selectedClub]);
 
   // Filter and search effect - moved after performAdvancedSearch definition
   useEffect(() => {
@@ -625,7 +625,7 @@ const CheckoutsManagement = () => {
       } else {
         setMessage({ type: 'error', text: response.message || 'Failed to approve checkout.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Error approving checkout.' });
     } finally {
       setLoading(false);
@@ -658,7 +658,7 @@ const CheckoutsManagement = () => {
       } else {
         setMessage({ type: 'error', text: response.message || 'Failed to reject checkout.' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Error rejecting checkout.' });
     } finally {
       setLoading(false);
