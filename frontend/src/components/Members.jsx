@@ -4,7 +4,7 @@ import apiService from '../services/apiService';
 const Members = () => {
   const [activeTab, setActiveTab] = useState('list');
   const [members, setMembers] = useState([]);
-  const [schools, setSchools] = useState([]);
+  const [_schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [deleteModal, setDeleteModal] = useState({ show: false, member: null });
