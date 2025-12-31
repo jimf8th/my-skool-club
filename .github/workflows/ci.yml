@@ -107,7 +107,19 @@ jobs:
       run: |
         cd backend
         mvn spring-boot:start &
-        sleep 30
+        # Wait for backend to be ready
+        for i in {1..60}; do
+          if curl -sSf http://localhost:8080/api/health >/dev/null 2>&1; then
+            echo "Backend is ready"
+            break
+          fi
+          echo "Waiting for backend..."
+          sleep 2
+        done
+        if [ $i -eq 60 ]; then
+          echo "Backend failed to start within 2 minutes"
+          exit 1
+        fi
     
     - name: Run Integration Tests
       run: |
