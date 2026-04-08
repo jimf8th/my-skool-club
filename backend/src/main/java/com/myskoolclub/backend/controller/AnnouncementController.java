@@ -280,4 +280,65 @@ public class AnnouncementController {
             return ResponseEntity.status(500).body(response);
         }
     }
+
+    /**
+     * Toggle thumbs up on an announcement
+     * POST /api/announcements/{id}/thumbsup
+     */
+    @PostMapping("/{id}/thumbsup")
+    public ResponseEntity<Map<String, Object>> toggleThumbsUp(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable String id) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Member currentMember = getCurrentMember(authHeader);
+            Announcement announcement = announcementService.toggleThumbsUp(id, currentMember.getId());
+
+            response.put("success", true);
+            response.put("thumbsUpCount", announcement.getThumbsUpMemberIds().size());
+            response.put("thumbsUpByMe", announcement.getThumbsUpMemberIds().contains(currentMember.getId()));
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "An error occurred");
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
+     * Get list of members who gave thumbs up
+     * GET /api/announcements/{id}/thumbsup
+     */
+    @GetMapping("/{id}/thumbsup")
+    public ResponseEntity<Map<String, Object>> getThumbsUpMembers(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable String id) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            getCurrentMember(authHeader); // just validate auth
+            List<Map<String, String>> members = announcementService.getThumbsUpMembers(id);
+
+            response.put("success", true);
+            response.put("data", members);
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "An error occurred");
+            return ResponseEntity.status(500).body(response);
+        }
+    }
 }

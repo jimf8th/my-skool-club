@@ -8,7 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Optional;
 
 @Service
@@ -116,5 +119,44 @@ public class AnnouncementService {
      */
     public Optional<Announcement> getAnnouncementById(String announcementId) {
         return announcementRepository.findById(announcementId);
+    }
+
+    /**
+     * Toggle thumbs up for a member on an announcement.
+     * Returns the updated announcement.
+     */
+    public Announcement toggleThumbsUp(String announcementId, String memberId) {
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
+
+        List<String> ids = announcement.getThumbsUpMemberIds();
+        if (ids.contains(memberId)) {
+            ids.remove(memberId);
+        } else {
+            ids.add(memberId);
+        }
+        announcement.setThumbsUpMemberIds(ids);
+        return announcementRepository.save(announcement);
+    }
+
+    /**
+     * Get the list of members who gave thumbs up on an announcement.
+     * Returns a list of maps with id, firstName, lastName.
+     */
+    public List<Map<String, String>> getThumbsUpMembers(String announcementId) {
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
+
+        List<Map<String, String>> result = new ArrayList<>();
+        for (String memberId : announcement.getThumbsUpMemberIds()) {
+            memberRepository.findById(memberId).ifPresent(member -> {
+                Map<String, String> info = new LinkedHashMap<>();
+                info.put("id", member.getId());
+                info.put("firstName", member.getFirstName());
+                info.put("lastName", member.getLastName());
+                result.add(info);
+            });
+        }
+        return result;
     }
 }

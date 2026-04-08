@@ -6,6 +6,8 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Document(collection = "announcements")
 public class Announcement {
@@ -29,7 +31,10 @@ public class Announcement {
     private LocalDateTime updatedAt;
     
     private boolean active; // Soft delete flag
-    
+
+    // Thumbs up: list of member IDs who gave thumbs up
+    private List<String> thumbsUpMemberIds = new ArrayList<>();
+
     // Constructors
     public Announcement() {
         this.createdAt = LocalDateTime.now();
@@ -117,5 +122,16 @@ public class Announcement {
     
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public List<String> getThumbsUpMemberIds() {
+        if (thumbsUpMemberIds == null) {
+            thumbsUpMemberIds = new ArrayList<>();
+        }
+        return thumbsUpMemberIds;
+    }
+
+    public void setThumbsUpMemberIds(List<String> thumbsUpMemberIds) {
+        this.thumbsUpMemberIds = thumbsUpMemberIds;
     }
 }

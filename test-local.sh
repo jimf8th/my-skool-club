@@ -10,6 +10,17 @@ echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}  MySkool Club - Local Test Script${NC}"
 echo -e "${YELLOW}========================================${NC}\n"
 
+# Load environment variables from .env
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+    echo -e "${GREEN}✓ Loaded environment variables from .env${NC}"
+else
+    echo -e "${RED}✗ .env file not found${NC}"
+    exit 1
+fi
+
 # Stop processes on port 5173 (Frontend)
 echo -e "${YELLOW}[1/6] Stopping processes on port 5173...${NC}"
 lsof -ti:5173 | xargs kill -9 2>/dev/null && echo -e "${GREEN}✓ Port 5173 cleared${NC}" || echo -e "${GREEN}✓ No process on port 5173${NC}"

@@ -514,6 +514,43 @@ export const apiService = {
         message: error.response?.data?.message || error.message
       };
     }
+  },
+
+  async toggleThumbsUp(id) {
+    try {
+      const response = await apiClient.post(`/api/announcements/${id}/thumbsup`);
+      return {
+        success: true,
+        thumbsUpCount: response.data.thumbsUpCount,
+        thumbsUpByMe: response.data.thumbsUpByMe,
+        status: response.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        status: error.response?.status || 500,
+        message: error.response?.data?.message || error.message
+      };
+    }
+  },
+
+  async getThumbsUpMembers(id) {
+    try {
+      const response = await apiClient.get(`/api/announcements/${id}/thumbsup`);
+      return {
+        success: true,
+        data: response.data.data,
+        status: response.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        status: error.response?.status || 500,
+        message: error.response?.data?.message || error.message
+      };
+    }
   }
 };
 

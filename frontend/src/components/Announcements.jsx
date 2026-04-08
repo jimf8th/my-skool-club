@@ -7,6 +7,11 @@ const Announcements = () => {
   const [error, setError] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
   const [isSchoolAdmin, setIsSchoolAdmin] = useState(false);
+
+  // Thumbs-up state
+  const [thumbsUpPopover, setThumbsUpPopover] = useState(null); // announcementId or null
+  const [thumbsUpMembers, setThumbsUpMembers] = useState({}); // { announcementId: [members] }
+  const [thumbsUpLoading, setThumbsUpLoading] = useState({}); // { announcementId: bool }
   
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -33,7 +38,13 @@ const Announcements = () => {
       const response = await apiService.getAnnouncements(pagination.page, pagination.size);
       
       if (response.success) {
-        setAnnouncements(response.data || []);
+        const memberId = JSON.parse(localStorage.getItem('currentMember') || '{}').id;
+        const enriched = (response.data || []).map(a => ({
+          ...a,
+          thumbsUpCount: (a.thumbsUpMemberIds || []).length,
+          thumbsUpByMe: (a.thumbsUpMemberIds || []).includes(memberId)
+        }));
+        setAnnouncements(enriched);
         setPagination(prev => ({
           ...prev,
           totalCount: response.totalCount || 0,
@@ -181,6 +192,69 @@ const Announcements = () => {
     setFormData({ title: '', content: '' });
     setFormErrors({});
   };
+
+  const handleThumbsUp = async (announcementId) => {
+    if (!currentMember) return;
+    setThumbsUpLoading(prev => ({ ...prev, [announcementId]: true }));
+    try {
+      const response = await apiService.toggleThumbsUp(announcementId);
+      if (response.success) {
+        setAnnouncements(prev => prev.map(a =>
+          a.id === announcementId
+            ? {
+                ...a,
+                thumbsUpCount: response.thumbsUpCount,
+                thumbsUpByMe: response.thumbsUpByMe,
+                // keep thumbsUpMemberIds in sync for popover refresh
+                thumbsUpMemberIds: response.thumbsUpByMe
+                  ? [...(a.thumbsUpMemberIds || []), currentMember.id]
+                  : (a.thumbsUpMemberIds || []).filter(id => id !== currentMember.id)
+              }
+            : a
+        ));
+        // Refresh popover list if open
+        if (thumbsUpPopover === announcementId) {
+          fetchThumbsUpMembers(announcementId);
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling thumbs up:', err);
+    } finally {
+      setThumbsUpLoading(prev => ({ ...prev, [announcementId]: false }));
+    }
+  };
+
+  const fetchThumbsUpMembers = async (announcementId) => {
+    try {
+      const response = await apiService.getThumbsUpMembers(announcementId);
+      if (response.success) {
+        setThumbsUpMembers(prev => ({ ...prev, [announcementId]: response.data }));
+      }
+    } catch (err) {
+      console.error('Error fetching thumbs up members:', err);
+    }
+  };
+
+  const handleThumbsUpCountClick = async (announcementId) => {
+    if (thumbsUpPopover === announcementId) {
+      setThumbsUpPopover(null);
+      return;
+    }
+    await fetchThumbsUpMembers(announcementId);
+    setThumbsUpPopover(announcementId);
+  };
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    if (!thumbsUpPopover) return;
+    const handler = (e) => {
+      if (!e.target.closest('.thumbsup-popover-anchor')) {
+        setThumbsUpPopover(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [thumbsUpPopover]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -361,6 +435,63 @@ const Announcements = () => {
                             <p className="card-text" style={{ whiteSpace: 'pre-wrap' }}>
                               {announcement.content}
                             </p>
+
+                            {/* Thumbs up row */}
+                            <div className="d-flex align-items-center gap-2 mt-2 position-relative thumbsup-popover-anchor">
+                              <button
+                                className={`btn btn-sm ${announcement.thumbsUpByMe ? 'btn-warning' : 'btn-outline-warning'}`}
+                                onClick={() => handleThumbsUp(announcement.id)}
+                                disabled={!currentMember || thumbsUpLoading[announcement.id]}
+                                title={announcement.thumbsUpByMe ? 'Remove thumbs up' : 'Give thumbs up'}
+                              >
+                                {thumbsUpLoading[announcement.id]
+                                  ? <span className="spinner-border spinner-border-sm"></span>
+                                  : <i className="fas fa-thumbs-up"></i>
+                                }
+                              </button>
+
+                              {announcement.thumbsUpCount > 0 && (
+                                <button
+                                  className="btn btn-sm btn-link p-0 text-muted text-decoration-none"
+                                  onClick={() => handleThumbsUpCountClick(announcement.id)}
+                                  title="See who liked this"
+                                >
+                                  <strong>{announcement.thumbsUpCount}</strong>
+                                  <span className="ms-1">{announcement.thumbsUpCount === 1 ? 'person' : 'people'}</span>
+                                </button>
+                              )}
+
+                              {/* Popover listing members who liked */}
+                              {thumbsUpPopover === announcement.id && (
+                                <div
+                                  className="card shadow position-absolute"
+                                  style={{ top: '2rem', left: 0, zIndex: 1050, minWidth: '200px', maxWidth: '300px' }}
+                                >
+                                  <div className="card-header d-flex justify-content-between align-items-center py-1 px-2">
+                                    <small className="fw-bold">
+                                      <i className="fas fa-thumbs-up text-warning me-1"></i>
+                                      Liked by
+                                    </small>
+                                    <button
+                                      className="btn-close btn-sm"
+                                      style={{ fontSize: '0.6rem' }}
+                                      onClick={() => setThumbsUpPopover(null)}
+                                    ></button>
+                                  </div>
+                                  <ul className="list-group list-group-flush" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                    {(thumbsUpMembers[announcement.id] || []).length === 0
+                                      ? <li className="list-group-item text-muted small py-1">No one yet</li>
+                                      : (thumbsUpMembers[announcement.id] || []).map(m => (
+                                          <li key={m.id} className="list-group-item py-1 px-2 small">
+                                            <i className="fas fa-user me-1 text-secondary"></i>
+                                            {m.firstName} {m.lastName}
+                                          </li>
+                                        ))
+                                    }
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
                           </div>
                           
                           {isSchoolAdmin && currentMember && announcement.createdBy === currentMember.id && (
