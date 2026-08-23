@@ -1,88 +1,57 @@
 package com.myskoolclub.backend.security;
 
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.MalformedJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.lang.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.ArrayList;
 
 @Component
+@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    @Autowired
-    private JwtTokenUtil jwtTokenUtil;
+    private final JwtUtil jwtUtil;
+    private final UserDetailsServiceImpl userDetailsService;
 
     @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, 
-                                    @NonNull FilterChain chain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
 
-        // Only process JWT for API endpoints
-        String requestPath = request.getRequestURI();
-        if (!requestPath.startsWith("/api/")) {
+        String authHeader = request.getHeader("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             chain.doFilter(request, response);
             return;
         }
 
-        final String requestTokenHeader = request.getHeader("Authorization");
+        String token = authHeader.substring(7);
 
-        String username = null;
-        String jwtToken = null;
+        try {
+            String email = jwtUtil.extractUsername(token);
 
-        // JWT Token is in the form "Bearer token". Remove Bearer word and get only the Token
-        if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
-            jwtToken = requestTokenHeader.substring(7);
-            try {
-                username = jwtTokenUtil.getUsernameFromToken(jwtToken);
-                logger.debug("JWT Token found for user: " + username);
-            } catch (IllegalArgumentException e) {
-                logger.error("Unable to get JWT Token: " + e.getMessage());
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            } catch (ExpiredJwtException e) {
-                logger.error("JWT Token has expired for user: " + e.getClaims().getSubject() + ". Token expired at: " + e.getClaims().getExpiration());
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            } catch (MalformedJwtException e) {
-                logger.error("JWT Token is malformed: " + e.getMessage());
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            } catch (Exception e) {
-                logger.error("Error parsing JWT Token: " + e.getMessage());
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+
+                if (jwtUtil.validateToken(token, userDetails)) {
+                    UsernamePasswordAuthenticationToken authToken =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
-        } else {
-            logger.debug("No JWT Token found in request headers");
+        } catch (Exception ignored) {
+            // Invalid or expired token — request continues unauthenticated
         }
 
-        // Once we get the token validate it.
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-            // Validate token
-            if (jwtTokenUtil.validateToken(jwtToken)) {
-                logger.info("JWT Token is valid for user: " + username);
-                
-                // Create a simple authentication token with just the username
-                // We'll load the full member information in the controllers as needed
-                UsernamePasswordAuthenticationToken authToken = 
-                        new UsernamePasswordAuthenticationToken(username, null, new ArrayList<>());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                
-                // Set the authentication in the context
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-                logger.info("Authentication set in security context for user: " + username);
-            } else {
-                logger.error("JWT Token validation failed for user: " + username + ". Token may be expired or invalid.");
-            }
-        }
         chain.doFilter(request, response);
     }
 }

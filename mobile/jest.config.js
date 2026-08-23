@@ -1,0 +1,25 @@
+module.exports = {
+  preset: 'jest-expo',
+  watchman: false,
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  testMatch: [
+    '<rootDir>/**/__tests__/**/*.[jt]s?(x)',
+    '<rootDir>/**/*.(spec|test).[jt]s?(x)',
+  ],
+  testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/'],
+  clearMocks: true,
+  restoreMocks: true,
+  collectCoverageFrom: [
+    'app/**/*.{js,jsx}',
+    'components/**/*.{js,jsx}',
+    'config/**/*.{js,jsx}',
+    'context/**/*.{js,jsx}',
+    'hooks/**/*.{js,jsx}',
+    'services/**/*.{js,jsx}',
+    'theme/**/*.{js,jsx}',
+    'utils/**/*.{js,jsx}',
+    '!**/*.d.ts',
+  ],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov'],
+};

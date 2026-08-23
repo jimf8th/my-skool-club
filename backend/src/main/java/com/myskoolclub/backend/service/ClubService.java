@@ -1,457 +1,343 @@
 package com.myskoolclub.backend.service;
 
-import com.myskoolclub.backend.model.Club;
-import com.myskoolclub.backend.repository.ClubRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.myskoolclub.backend.dto.ClubRequest;
+import com.myskoolclub.backend.dto.ClubResponse;
+import com.myskoolclub.backend.dto.MembershipResponse;
+import com.myskoolclub.backend.dto.UpdateClubRequest;
+import com.myskoolclub.backend.exception.AppException;
+import com.myskoolclub.backend.model.*;
+import com.myskoolclub.backend.repository.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class ClubService {
-    
-    @Autowired
-    private ClubRepository clubRepository;
-    
-    // Create operations
-    public Club createClub(Club club) {
-        validateClub(club);
-        
-        // Check for duplicate club name within the same school
-        if (clubRepository.existsByNameAndSchoolId(club.getName(), club.getSchoolId())) {
-            throw new IllegalArgumentException("A club with the name '" + club.getName() + 
-                                             "' already exists in this school");
+
+    private final ClubRepository clubRepository;
+    private final ClubMembershipRepository clubMembershipRepository;
+    private final UserRepository userRepository;
+    private final SchoolService schoolService;
+    private final NotificationService notificationService;
+    private final ContentSafetyService contentSafetyService;
+
+    // ---- Club management (SCHOOL_ADMIN only) ----
+
+    @Transactional
+    public ClubResponse createClub(Long schoolId, ClubRequest request, String schoolAdminEmail) {
+        contentSafetyService.requireAllowed(request.name(), request.description());
+        User admin = requireUser(schoolAdminEmail);
+        // Access already verified by @PreAuthorize(ADD_CLUB); service validates business rules
+
+        if (clubRepository.existsByNameAndSchoolId(request.name(), schoolId)) {
+            throw new AppException(HttpStatus.CONFLICT, "A club with that name already exists in this school");
         }
-        
-        // Set system fields
-        club.setCreatedAt(LocalDateTime.now());
-        club.setUpdatedAt(LocalDateTime.now());
-        club.setActive(true);
-        
-        return clubRepository.save(club);
+
+        // First club admin must be an approved school member
+        User firstAdmin = requireUserById(request.firstAdminUserId());
+        schoolService.requireApprovedMember(schoolId, firstAdmin.getId());
+
+        School school = schoolService.getSchoolEntity(schoolId);
+
+        Club club = Club.builder()
+                .name(request.name())
+                .description(request.description())
+                .school(school)
+                .createdBy(admin)
+                .build();
+        Club saved = clubRepository.save(club);
+
+        // Assign first club admin directly (approved, no request needed)
+        ClubMembership adminMembership = ClubMembership.builder()
+                .user(firstAdmin)
+                .club(saved)
+                .role(MembershipRole.ADMIN)
+                .status(MembershipStatus.APPROVED)
+                .build();
+        adminMembership.setReviewedAt(LocalDateTime.now());
+        adminMembership.setReviewedBy(admin);
+        clubMembershipRepository.save(adminMembership);
+
+        notificationService.notify(firstAdmin, NotificationType.CLUB_ADMIN_ASSIGNED,
+                saved.getId().toString(),
+                "You have been assigned as admin of the club: " + saved.getName());
+
+        return ClubResponse.from(saved);
     }
-    
-    // Read operations
-    public List<Club> getAllClubs() {
-        return clubRepository.findAll();
+
+    @Transactional(readOnly = true)
+    public List<ClubResponse> listClubs(Long schoolId, String requesterEmail) {
+        User requester = requireUser(requesterEmail);
+        schoolService.requireApprovedMember(schoolId, requester.getId());
+        return clubRepository.findBySchoolIdOrderByNameAsc(schoolId).stream()
+                .map(ClubResponse::from)
+                .toList();
     }
-    
-    public List<Club> getActiveClubs() {
-        return clubRepository.findByActive(true);
+
+    @Transactional(readOnly = true)
+    public ClubResponse getClub(Long clubId, String requesterEmail) {
+        Club club = requireClub(clubId);
+        User requester = requireUser(requesterEmail);
+        schoolService.requireApprovedMember(club.getSchool().getId(), requester.getId());
+        List<ClubMembership> admins = clubMembershipRepository
+                .findByClubIdAndRoleAndStatus(clubId, MembershipRole.ADMIN, MembershipStatus.APPROVED);
+        return ClubResponse.from(club, admins);
     }
-    
-    public Optional<Club> getClubById(String id) {
-        return clubRepository.findById(id);
-    }
-    
-    public List<Club> getClubsBySchool(String schoolId) {
-        return clubRepository.findBySchoolId(schoolId);
-    }
-    
-    public List<Club> getActiveClubsBySchool(String schoolId) {
-        return clubRepository.findBySchoolIdAndActive(schoolId, true);
-    }
-    
-    public List<Club> getClubsByCategory(String category) {
-        return clubRepository.findByCategory(category);
-    }
-    
-    public List<Club> getClubsByCategoryAndSchool(String category, String schoolId) {
-        return clubRepository.findByCategoryAndSchoolId(category, schoolId);
-    }
-    
-    public List<Club> searchClubsByName(String name) {
-        return clubRepository.findByNameContainingIgnoreCase(name);
-    }
-    
-    public List<Club> searchClubsByKeyword(String keyword) {
-        return clubRepository.searchClubsByKeyword(keyword);
-    }
-    
-    public List<Club> searchClubsBySchoolAndKeyword(String schoolId, String keyword) {
-        return clubRepository.searchClubsBySchoolAndKeyword(schoolId, keyword);
-    }
-    
-    public List<Club> getClubsByAdvisorEmail(String advisorEmail) {
-        return clubRepository.findByAdvisorEmailIgnoreCase(advisorEmail);
-    }
-    
-    public List<Club> getClubsByMeetingDay(String meetingDay) {
-        return clubRepository.findByMeetingDay(meetingDay);
-    }
-    
-    public List<Club> getClubsByTags(List<String> tags) {
-        return clubRepository.findByTagsIn(tags);
-    }
-    
-    // Paginated Read operations
-    public Page<Club> getAllClubs(Pageable pageable) {
-        return clubRepository.findAll(pageable);
-    }
-    
-    public Page<Club> getActiveClubs(Pageable pageable) {
-        return clubRepository.findByActive(true, pageable);
-    }
-    
-    public Page<Club> getClubsBySchool(String schoolId, Pageable pageable) {
-        return clubRepository.findBySchoolId(schoolId, pageable);
-    }
-    
-    public Page<Club> getActiveClubsBySchool(String schoolId, Pageable pageable) {
-        return clubRepository.findBySchoolIdAndActive(schoolId, true, pageable);
-    }
-    
-    public Page<Club> getClubsByCategory(String category, Pageable pageable) {
-        return clubRepository.findByCategory(category, pageable);
-    }
-    
-    public Page<Club> getClubsByCategoryAndSchool(String category, String schoolId, Pageable pageable) {
-        return clubRepository.findByCategoryAndSchoolId(category, schoolId, pageable);
-    }
-    
-    public Page<Club> searchClubsByKeyword(String keyword, Pageable pageable) {
-        return clubRepository.searchClubsByKeyword(keyword, pageable);
-    }
-    
-    public Page<Club> searchClubsBySchoolAndKeyword(String schoolId, String keyword, Pageable pageable) {
-        return clubRepository.searchClubsBySchoolAndKeyword(schoolId, keyword, pageable);
-    }
-    
-    // Update operations
-    public Club updateClub(String id, Club updatedClub) {
-        Optional<Club> existingClubOpt = clubRepository.findById(id);
-        
-        if (existingClubOpt.isEmpty()) {
-            throw new IllegalArgumentException("Club not found with id: " + id);
-        }
-        
-        Club existingClub = existingClubOpt.get();
-        
-        // Validate the updated club data
-        validateClub(updatedClub);
-        
-        // Check for duplicate name (excluding current club)
-        if (!existingClub.getName().equals(updatedClub.getName()) &&
-            clubRepository.existsByNameAndSchoolIdAndIdNot(updatedClub.getName(), 
-                                                          updatedClub.getSchoolId(), id)) {
-            throw new IllegalArgumentException("A club with the name '" + updatedClub.getName() + 
-                                             "' already exists in this school");
-        }
-        
-        // Update fields
-        existingClub.setName(updatedClub.getName());
-        existingClub.setSchoolId(updatedClub.getSchoolId());
-        existingClub.setSchoolName(updatedClub.getSchoolName());
-        existingClub.setDescription(updatedClub.getDescription());
-        existingClub.setCategory(updatedClub.getCategory());
-        existingClub.setAdvisorName(updatedClub.getAdvisorName());
-        existingClub.setAdvisorEmail(updatedClub.getAdvisorEmail());
-        existingClub.setMeetingLocation(updatedClub.getMeetingLocation());
-        existingClub.setMeetingTime(updatedClub.getMeetingTime());
-        existingClub.setMeetingDay(updatedClub.getMeetingDay());
-        existingClub.setMaxMembers(updatedClub.getMaxMembers());
-        existingClub.setTags(updatedClub.getTags());
-        existingClub.setUpdatedAt(LocalDateTime.now());
-        
-        return clubRepository.save(existingClub);
-    }
-    
-    public Club updateClubPartial(String id, Club partialUpdate) {
-        Optional<Club> existingClubOpt = clubRepository.findById(id);
-        
-        if (existingClubOpt.isEmpty()) {
-            throw new IllegalArgumentException("Club not found with id: " + id);
-        }
-        
-        Club existingClub = existingClubOpt.get();
-        
-        // Update only non-null fields
-        if (partialUpdate.getName() != null && !partialUpdate.getName().trim().isEmpty()) {
-            // Check for duplicate name
-            if (!existingClub.getName().equals(partialUpdate.getName()) &&
-                clubRepository.existsByNameAndSchoolIdAndIdNot(partialUpdate.getName(), 
-                                                              existingClub.getSchoolId(), id)) {
-                throw new IllegalArgumentException("A club with the name '" + partialUpdate.getName() + 
-                                                 "' already exists in this school");
+
+    // ---- Club membership requests ----
+
+    @Transactional
+    public MembershipResponse requestMembership(Long clubId, String requesterEmail) {
+        User requester = requireUser(requesterEmail);
+        Club club = requireClub(clubId);
+
+        // Must be an approved school member
+        schoolService.requireApprovedMember(club.getSchool().getId(), requester.getId());
+
+        ClubMembership existing = clubMembershipRepository
+                .findByUserIdAndClubId(requester.getId(), clubId)
+                .orElse(null);
+
+        if (existing != null) {
+            if (existing.getStatus() == MembershipStatus.PENDING) {
+                throw new AppException(HttpStatus.CONFLICT, "You already have a pending membership request for this club");
             }
-            existingClub.setName(partialUpdate.getName().trim());
-        }
-        
-        if (partialUpdate.getDescription() != null) {
-            existingClub.setDescription(partialUpdate.getDescription());
-        }
-        
-        if (partialUpdate.getCategory() != null) {
-            existingClub.setCategory(partialUpdate.getCategory());
-        }
-        
-        if (partialUpdate.getAdvisorName() != null) {
-            existingClub.setAdvisorName(partialUpdate.getAdvisorName());
-        }
-        
-        if (partialUpdate.getAdvisorEmail() != null) {
-            existingClub.setAdvisorEmail(partialUpdate.getAdvisorEmail());
-        }
-        
-        if (partialUpdate.getMeetingLocation() != null) {
-            existingClub.setMeetingLocation(partialUpdate.getMeetingLocation());
-        }
-        
-        if (partialUpdate.getMeetingTime() != null) {
-            existingClub.setMeetingTime(partialUpdate.getMeetingTime());
-        }
-        
-        if (partialUpdate.getMeetingDay() != null) {
-            existingClub.setMeetingDay(partialUpdate.getMeetingDay());
-        }
-        
-        if (partialUpdate.getMaxMembers() != null) {
-            existingClub.setMaxMembers(partialUpdate.getMaxMembers());
-        }
-        
-        if (partialUpdate.getTags() != null) {
-            existingClub.setTags(partialUpdate.getTags());
-        }
-        
-        existingClub.setUpdatedAt(LocalDateTime.now());
-        
-        return clubRepository.save(existingClub);
-    }
-    
-    // Activate/Deactivate operations
-    public Club deactivateClub(String id) {
-        Optional<Club> clubOpt = clubRepository.findById(id);
-        
-        if (clubOpt.isEmpty()) {
-            throw new IllegalArgumentException("Club not found with id: " + id);
-        }
-        
-        Club club = clubOpt.get();
-        club.setActive(false);
-        club.setUpdatedAt(LocalDateTime.now());
-        
-        return clubRepository.save(club);
-    }
-    
-    public Club activateClub(String id) {
-        Optional<Club> clubOpt = clubRepository.findById(id);
-        
-        if (clubOpt.isEmpty()) {
-            throw new IllegalArgumentException("Club not found with id: " + id);
-        }
-        
-        Club club = clubOpt.get();
-        club.setActive(true);
-        club.setUpdatedAt(LocalDateTime.now());
-        
-        return clubRepository.save(club);
-    }
-    
-    // Delete operations
-    public void deleteClub(String id) {
-        if (!clubRepository.existsById(id)) {
-            throw new IllegalArgumentException("Club not found with id: " + id);
-        }
-        
-        clubRepository.deleteById(id);
-    }
-    
-    public void softDeleteClub(String id) {
-        deactivateClub(id);
-    }
-    
-    // Count operations
-    public long getClubCount() {
-        return clubRepository.count();
-    }
-    
-    public long getClubCountBySchool(String schoolId) {
-        return clubRepository.countBySchoolId(schoolId);
-    }
-    
-    public long getActiveClubCountBySchool(String schoolId) {
-        return clubRepository.countBySchoolIdAndActive(schoolId, true);
-    }
-    
-    public long getClubCountByCategory(String category) {
-        return clubRepository.countByCategory(category);
-    }
-    
-    // Advanced search method
-    public List<Club> advancedSearchClubs(String search, String schoolId, String category, 
-                                          String meetingDay, String advisorName, String status,
-                                          String sortBy, String sortDirection) {
-        
-        List<Club> clubs = clubRepository.findAll();
-        
-        // Apply filters
-        clubs = clubs.stream()
-                .filter(club -> {
-                    // Search filter (name or description)
-                    if (search != null && !search.trim().isEmpty()) {
-                        String searchLower = search.toLowerCase();
-                        return club.getName().toLowerCase().contains(searchLower) ||
-                               (club.getDescription() != null && club.getDescription().toLowerCase().contains(searchLower));
-                    }
-                    return true;
-                })
-                .filter(club -> {
-                    // School filter
-                    if (schoolId != null && !schoolId.trim().isEmpty()) {
-                        return club.getSchoolId().equals(schoolId);
-                    }
-                    return true;
-                })
-                .filter(club -> {
-                    // Category filter
-                    if (category != null && !category.trim().isEmpty()) {
-                        return club.getCategory() != null && club.getCategory().equalsIgnoreCase(category);
-                    }
-                    return true;
-                })
-                .filter(club -> {
-                    // Meeting day filter
-                    if (meetingDay != null && !meetingDay.trim().isEmpty()) {
-                        return club.getMeetingDay() != null && club.getMeetingDay().equalsIgnoreCase(meetingDay);
-                    }
-                    return true;
-                })
-                .filter(club -> {
-                    // Advisor name filter
-                    if (advisorName != null && !advisorName.trim().isEmpty()) {
-                        return club.getAdvisorName() != null && 
-                               club.getAdvisorName().toLowerCase().contains(advisorName.toLowerCase());
-                    }
-                    return true;
-                })
-                .filter(club -> {
-                    // Status filter
-                    if (status != null && !status.trim().isEmpty()) {
-                        if (status.equalsIgnoreCase("active")) {
-                            return club.isActive();
-                        } else if (status.equalsIgnoreCase("inactive")) {
-                            return !club.isActive();
-                        }
-                    }
-                    return true;
-                })
-                .sorted((club1, club2) -> {
-                    // Sorting
-                    int comparison = 0;
-                    String field = sortBy != null ? sortBy : "name";
-                    
-                    switch (field.toLowerCase()) {
-                        case "name":
-                            comparison = club1.getName().compareToIgnoreCase(club2.getName());
-                            break;
-                        case "schoolname":
-                            String school1 = club1.getSchoolName() != null ? club1.getSchoolName() : "";
-                            String school2 = club2.getSchoolName() != null ? club2.getSchoolName() : "";
-                            comparison = school1.compareToIgnoreCase(school2);
-                            break;
-                        case "category":
-                            String cat1 = club1.getCategory() != null ? club1.getCategory() : "";
-                            String cat2 = club2.getCategory() != null ? club2.getCategory() : "";
-                            comparison = cat1.compareToIgnoreCase(cat2);
-                            break;
-                        case "advisorname":
-                            String advisor1 = club1.getAdvisorName() != null ? club1.getAdvisorName() : "";
-                            String advisor2 = club2.getAdvisorName() != null ? club2.getAdvisorName() : "";
-                            comparison = advisor1.compareToIgnoreCase(advisor2);
-                            break;
-                        case "createdat":
-                            if (club1.getCreatedAt() != null && club2.getCreatedAt() != null) {
-                                comparison = club1.getCreatedAt().compareTo(club2.getCreatedAt());
-                            }
-                            break;
-                        case "meetingday":
-                            String day1 = club1.getMeetingDay() != null ? club1.getMeetingDay() : "";
-                            String day2 = club2.getMeetingDay() != null ? club2.getMeetingDay() : "";
-                            comparison = day1.compareToIgnoreCase(day2);
-                            break;
-                        default:
-                            comparison = club1.getName().compareToIgnoreCase(club2.getName());
-                    }
-                    
-                    return "desc".equalsIgnoreCase(sortDirection) ? -comparison : comparison;
-                })
-                .collect(java.util.stream.Collectors.toList());
-        
-        return clubs;
-    }
-    
-    // Paginated advanced search method
-    public Page<Club> advancedSearchClubs(String search, String schoolId, String category, 
-                                          String meetingDay, String advisorName, String status, 
-                                          Pageable pageable) {
-        
-        // For simplicity, we'll use the existing search and then apply pagination
-        // In a production environment, you'd want to implement this with proper MongoDB queries
-        List<Club> allClubs = advancedSearchClubs(search, schoolId, category, meetingDay, 
-                                                   advisorName, status, "name", "asc");
-        
-        // Manual pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), allClubs.size());
-        
-        List<Club> pageContent = start >= allClubs.size() ? 
-                                 new ArrayList<>() : 
-                                 allClubs.subList(start, end);
-        
-        return new org.springframework.data.domain.PageImpl<>(
-            pageContent, pageable, allClubs.size()
-        );
-    }
-    
-    // Validation
-    private void validateClub(Club club) {
-        if (club == null) {
-            throw new IllegalArgumentException("Club cannot be null");
-        }
-        
-        if (club.getName() == null || club.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Club name is required");
-        }
-        
-        if (club.getSchoolId() == null || club.getSchoolId().trim().isEmpty()) {
-            throw new IllegalArgumentException("School ID is required");
-        }
-        
-        if (club.getName().trim().length() > 100) {
-            throw new IllegalArgumentException("Club name cannot exceed 100 characters");
-        }
-        
-        if (club.getDescription() != null && club.getDescription().length() > 1000) {
-            throw new IllegalArgumentException("Club description cannot exceed 1000 characters");
-        }
-        
-        if (club.getAdvisorEmail() != null && !club.getAdvisorEmail().trim().isEmpty()) {
-            if (!isValidEmail(club.getAdvisorEmail())) {
-                throw new IllegalArgumentException("Invalid advisor email format");
+            if (existing.getStatus() == MembershipStatus.APPROVED) {
+                throw new AppException(HttpStatus.CONFLICT, "You are already a member of this club");
             }
+            // Re-request after rejection or revocation
+            existing.setStatus(MembershipStatus.PENDING);
+            existing.setReviewedAt(null);
+            existing.setReviewedBy(null);
+            ClubMembership saved = clubMembershipRepository.save(existing);
+            notifyClubAdmins(club, requester);
+            return MembershipResponse.from(saved);
         }
-        
-        if (club.getMaxMembers() != null && club.getMaxMembers() < 1) {
-            throw new IllegalArgumentException("Maximum members must be at least 1");
+
+        ClubMembership membership = ClubMembership.builder()
+                .user(requester)
+                .club(club)
+                .build();
+        ClubMembership saved = clubMembershipRepository.save(membership);
+        notifyClubAdmins(club, requester);
+        return MembershipResponse.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<MembershipResponse> getMyMembership(Long clubId, String email) {
+        User user = requireUser(email);
+        return clubMembershipRepository
+                .findByUserIdAndClubId(user.getId(), clubId)
+                .map(MembershipResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MembershipResponse> listMembershipRequests(Long clubId) {
+        return clubMembershipRepository
+                .findByClubIdAndStatusOrderByRequestedAtAsc(clubId, MembershipStatus.PENDING)
+                .stream().map(MembershipResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MembershipResponse> listMembers(Long clubId) {
+        return clubMembershipRepository
+                .findByClubIdAndStatusOrderByRequestedAtAsc(clubId, MembershipStatus.APPROVED)
+                .stream().map(MembershipResponse::from).toList();
+    }
+
+    @Transactional
+    public MembershipResponse approveMembership(Long clubId, Long targetUserId, String adminEmail) {
+        User admin = requireUser(adminEmail);
+        Club club = requireClub(clubId);
+
+        ClubMembership membership = clubMembershipRepository
+                .findByUserIdAndClubId(targetUserId, clubId)
+                .filter(m -> m.getStatus() == MembershipStatus.PENDING)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "No pending membership request found"));
+
+        membership.setStatus(MembershipStatus.APPROVED);
+        membership.setReviewedAt(LocalDateTime.now());
+        membership.setReviewedBy(admin);
+        ClubMembership saved = clubMembershipRepository.save(membership);
+
+        notificationService.notify(membership.getUser(), NotificationType.CLUB_MEMBERSHIP_APPROVED,
+                clubId.toString(),
+                "Your membership request for the club \"" + club.getName() + "\" has been approved");
+        return MembershipResponse.from(saved);
+    }
+
+    @Transactional
+    public MembershipResponse rejectMembership(Long clubId, Long targetUserId, String adminEmail) {
+        User admin = requireUser(adminEmail);
+        Club club = requireClub(clubId);
+
+        ClubMembership membership = clubMembershipRepository
+                .findByUserIdAndClubId(targetUserId, clubId)
+                .filter(m -> m.getStatus() == MembershipStatus.PENDING)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "No pending membership request found"));
+
+        membership.setStatus(MembershipStatus.REJECTED);
+        membership.setReviewedAt(LocalDateTime.now());
+        membership.setReviewedBy(admin);
+        ClubMembership saved = clubMembershipRepository.save(membership);
+
+        notificationService.notify(membership.getUser(), NotificationType.CLUB_MEMBERSHIP_REJECTED,
+                clubId.toString(),
+                "Your membership request for the club \"" + club.getName() + "\" was not approved");
+        return MembershipResponse.from(saved);
+    }
+
+    @Transactional
+    public void revokeMembership(Long clubId, Long targetUserId, String adminEmail) {
+        User admin = requireUser(adminEmail);
+        Club club = requireClub(clubId);
+
+        ClubMembership membership = clubMembershipRepository
+                .findByUserIdAndClubId(targetUserId, clubId)
+                .filter(m -> m.getStatus() == MembershipStatus.APPROVED)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "No active membership found for this user"));
+
+        membership.setStatus(MembershipStatus.REVOKED);
+        membership.setReviewedAt(LocalDateTime.now());
+        membership.setReviewedBy(admin);
+        clubMembershipRepository.save(membership);
+
+        notificationService.notify(membership.getUser(), NotificationType.CLUB_MEMBERSHIP_REVOKED,
+                clubId.toString(),
+                "Your membership in the club \"" + club.getName() + "\" has been removed");
+    }
+
+    // ---- Club Admin management (CLUB_ADMIN or SCHOOL_ADMIN) ----
+
+    @Transactional
+    public void assignClubAdmin(Long clubId, Long targetUserId, String requesterEmail) {
+        User requester = requireUser(requesterEmail);
+        Club club = requireClub(clubId);
+        User target = requireUserById(targetUserId);
+
+        // Target must be an approved school member
+        schoolService.requireApprovedMember(club.getSchool().getId(), targetUserId);
+
+        ClubMembership membership = clubMembershipRepository
+                .findByUserIdAndClubId(targetUserId, clubId)
+                .orElseGet(() -> ClubMembership.builder()
+                        .user(target)
+                        .club(club)
+                        .build());
+
+        membership.setRole(MembershipRole.ADMIN);
+        membership.setStatus(MembershipStatus.APPROVED);
+        membership.setReviewedAt(LocalDateTime.now());
+        membership.setReviewedBy(requester);
+        clubMembershipRepository.save(membership);
+
+        notificationService.notify(target, NotificationType.CLUB_ADMIN_ASSIGNED,
+                clubId.toString(),
+                "You have been assigned as club admin for: " + club.getName());
+    }
+
+    @Transactional
+    public void revokeClubAdminRole(Long clubId, Long targetUserId, String requesterEmail) {
+        User requester = requireUser(requesterEmail);
+        Club club = requireClub(clubId);
+
+        ClubMembership membership = clubMembershipRepository
+                .findByUserIdAndClubIdAndRoleAndStatus(targetUserId, clubId,
+                        MembershipRole.ADMIN, MembershipStatus.APPROVED)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User is not a club admin"));
+
+        long adminCount = clubMembershipRepository
+                .findByClubIdAndRoleAndStatus(clubId, MembershipRole.ADMIN, MembershipStatus.APPROVED)
+                .size();
+        if (adminCount <= 1) {
+            throw new AppException(HttpStatus.CONFLICT,
+                    "Cannot remove the last admin. Assign another admin first.");
         }
+
+        membership.setRole(MembershipRole.MEMBER);
+        membership.setReviewedAt(LocalDateTime.now());
+        membership.setReviewedBy(requester);
+        clubMembershipRepository.save(membership);
+
+        notificationService.notify(membership.getUser(), NotificationType.CLUB_MEMBERSHIP_REVOKED,
+                clubId.toString(),
+                "Your club admin role at \"" + club.getName() + "\" has been removed");
     }
-    
-    private boolean isValidEmail(String email) {
-        // Simple email validation
-        return email != null && email.trim().matches("^[A-Za-z0-9+_.-]+@(.+)$");
+
+    @Transactional(readOnly = true)
+    public List<MembershipResponse> getClubAdmins(Long clubId) {
+        return clubMembershipRepository
+                .findByClubIdAndRoleAndStatus(clubId, MembershipRole.ADMIN, MembershipStatus.APPROVED)
+                .stream().map(MembershipResponse::from).toList();
     }
-    
-    // Utility methods
-    public boolean clubExistsInSchool(String clubName, String schoolId) {
-        return clubRepository.existsByNameAndSchoolId(clubName, schoolId);
+
+    // ---- Club management ----
+
+    @Transactional
+    public ClubResponse updateClub(Long schoolId, Long clubId, UpdateClubRequest request, String requesterEmail) {
+        contentSafetyService.requireAllowed(request.name(), request.description());
+        Club club = requireClub(clubId);
+        if (!club.getSchool().getId().equals(schoolId)) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Club not found in this school");
+        }
+        if (!club.getName().equalsIgnoreCase(request.name()) &&
+                clubRepository.existsByNameAndSchoolId(request.name(), schoolId)) {
+            throw new AppException(HttpStatus.CONFLICT, "A club with that name already exists in this school");
+        }
+        club.setName(request.name());
+        club.setDescription(request.description() != null ? request.description().trim() : null);
+        return ClubResponse.from(clubRepository.save(club));
     }
-    
-    public Optional<Club> findClubByNameAndSchool(String clubName, String schoolId) {
-        return clubRepository.findByNameAndSchoolId(clubName, schoolId);
+
+    @Transactional
+    public void deleteClub(Long schoolId, Long clubId, String requesterEmail) {
+        Club club = requireClub(clubId);
+        if (!club.getSchool().getId().equals(schoolId)) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Club not found in this school");
+        }
+        clubMembershipRepository.deleteByClubId(clubId);
+        clubRepository.delete(club);
+    }
+
+    // ---- Helpers ----
+
+    private ClubMembership requireClubAdmin(Long clubId, Long userId) {
+        return clubMembershipRepository
+                .findByUserIdAndClubIdAndRoleAndStatus(userId, clubId, MembershipRole.ADMIN, MembershipStatus.APPROVED)
+                .orElseThrow(() -> new AppException(HttpStatus.FORBIDDEN, "Club admin privileges required"));
+    }
+
+    private void notifyClubAdmins(Club club, User requester) {
+        clubMembershipRepository
+                .findByClubIdAndStatusOrderByRequestedAtAsc(club.getId(), MembershipStatus.APPROVED)
+                .stream()
+                .filter(m -> m.getRole() == MembershipRole.ADMIN)
+                .forEach(admin -> notificationService.notify(
+                        admin.getUser(),
+                        NotificationType.CLUB_MEMBERSHIP_REQUESTED,
+                        club.getId().toString(),
+                        requester.getFirstName() + " " + requester.getLastName() +
+                        " has requested to join the club: " + club.getName()));
+    }
+
+    private Club requireClub(Long clubId) {
+        return clubRepository.findById(clubId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Club not found"));
+    }
+
+    private User requireUser(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    private User requireUserById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
     }
 }

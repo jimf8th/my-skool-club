@@ -1,0 +1,47 @@
+appId: ${APP_ID}
+name: App Review club-administrator rehearsal
+tags:
+  - app-review
+  - club-admin
+---
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${E2E_CLUB_ADMIN_EMAIL}
+      PASSWORD: ${E2E_CLUB_ADMIN_PASSWORD}
+- tapOn: "Clubs"
+- extendedWaitUntil:
+    visible: "Robotics & Innovation Club"
+    timeout: 20000
+- tapOn: "View"
+- extendedWaitUntil:
+    visible: "Club Admins"
+    timeout: 20000
+- assertVisible: "Club Dashboard"
+- assertVisible: "Review Pending Requests"
+- assertVisible: "View Club Members"
+- assertVisible: "Invoices"
+- assertVisible: "Inventory"
+- tapOn: "Invoices"
+- extendedWaitUntil:
+    visible: "New Invoice"
+    timeout: 20000
+- assertVisible: "Draft"
+- tapOn: "New Invoice"
+- assertVisible: "Scan Receipt · Premium"
+- assertVisible: "Payment required (reimbursement or external bill)"
+- tapOn:
+    point: "92%,10%"
+- tapOn:
+    point: "92%,10%"
+- tapOn: "View"
+- extendedWaitUntil:
+    visible: "Inventory"
+    timeout: 20000
+- tapOn: "Inventory"
+- assertVisible: "Add Item"
+- assertVisible: "Competition Robot · Atlas"
+- tapOn:
+    point: "92%,10%"
+- tapOn: "Profile"
+- assertVisible: "Account Info"

@@ -1,120 +1,100 @@
 package com.myskoolclub.backend.service;
 
+import com.myskoolclub.backend.dto.AnnouncementRequest;
+import com.myskoolclub.backend.dto.AnnouncementResponse;
+import com.myskoolclub.backend.exception.AppException;
+import com.myskoolclub.backend.model.AppRole;
 import com.myskoolclub.backend.model.Announcement;
-import com.myskoolclub.backend.model.Member;
+import com.myskoolclub.backend.model.MembershipRole;
+import com.myskoolclub.backend.model.MembershipStatus;
+import com.myskoolclub.backend.model.School;
+import com.myskoolclub.backend.model.User;
 import com.myskoolclub.backend.repository.AnnouncementRepository;
-import com.myskoolclub.backend.repository.MemberRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.myskoolclub.backend.repository.SchoolMembershipRepository;
+import com.myskoolclub.backend.repository.SchoolRepository;
+import com.myskoolclub.backend.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class AnnouncementService {
-    
-    @Autowired
-    private AnnouncementRepository announcementRepository;
-    
-    @Autowired
-    private MemberRepository memberRepository;
-    
-    /**
-     * Create a new announcement (SCHOOL_ADMIN only)
-     */
-    public Announcement createAnnouncement(String schoolId, String title, String content, String createdBy) {
-        // Verify creator exists and get their name
-        Optional<Member> creatorOpt = memberRepository.findById(createdBy);
-        if (creatorOpt.isEmpty()) {
-            throw new RuntimeException("Creator member not found");
-        }
-        
-        Member creator = creatorOpt.get();
-        
-        // Verify creator is SCHOOL_ADMIN
-        if (!"SCHOOL_ADMIN".equals(creator.getRole())) {
-            throw new RuntimeException("Only SCHOOL_ADMIN can create announcements");
-        }
-        
-        // Verify creator belongs to the same school
-        if (!schoolId.equals(creator.getSchoolId())) {
-            throw new RuntimeException("Cannot create announcements for a different school");
-        }
-        
-        String creatorName = creator.getFirstName() + " " + creator.getLastName();
-        
-        Announcement announcement = new Announcement(schoolId, title, content, createdBy, creatorName);
-        return announcementRepository.save(announcement);
+
+    private final AnnouncementRepository announcementRepository;
+    private final SchoolRepository schoolRepository;
+    private final SchoolMembershipRepository schoolMembershipRepository;
+    private final UserRepository userRepository;
+    private final ContentSafetyService contentSafetyService;
+
+    @Transactional(readOnly = true)
+    public List<AnnouncementResponse> listAnnouncements(Long schoolId) {
+        return announcementRepository.findBySchoolIdOrderByCreatedAtDesc(schoolId).stream()
+                .map(AnnouncementResponse::from)
+                .toList();
     }
-    
-    /**
-     * Update an existing announcement (SCHOOL_ADMIN only, must be creator)
-     */
-    public Announcement updateAnnouncement(String announcementId, String title, String content, String updatedBy) {
-        Optional<Announcement> announcementOpt = announcementRepository.findById(announcementId);
-        if (announcementOpt.isEmpty()) {
-            throw new RuntimeException("Announcement not found");
-        }
-        
-        Announcement announcement = announcementOpt.get();
-        
-        // Verify updater is the creator
-        if (!announcement.getCreatedBy().equals(updatedBy)) {
-            throw new RuntimeException("Only the creator can update this announcement");
-        }
-        
-        // Verify updater is still SCHOOL_ADMIN
-        Optional<Member> updaterOpt = memberRepository.findById(updatedBy);
-        if (updaterOpt.isEmpty() || !"SCHOOL_ADMIN".equals(updaterOpt.get().getRole())) {
-            throw new RuntimeException("Only SCHOOL_ADMIN can update announcements");
-        }
-        
-        announcement.setTitle(title);
-        announcement.setContent(content);
-        announcement.setUpdatedAt(LocalDateTime.now());
-        
-        return announcementRepository.save(announcement);
+
+    @Transactional
+    public AnnouncementResponse createAnnouncement(Long schoolId, AnnouncementRequest request, String requesterEmail) {
+        contentSafetyService.requireAllowed(request.title(), request.body());
+        School school = requireSchool(schoolId);
+        User creator = requireUser(requesterEmail);
+
+        Announcement announcement = Announcement.builder()
+                .school(school)
+                .createdBy(creator)
+                .title(request.title())
+                .body(request.body())
+                .build();
+
+        Announcement saved = announcementRepository.save(announcement);
+        return AnnouncementResponse.from(saved);
     }
-    
-    /**
-     * Delete (soft delete) an announcement (SCHOOL_ADMIN only, must be creator)
-     */
-    public void deleteAnnouncement(String announcementId, String deletedBy) {
-        Optional<Announcement> announcementOpt = announcementRepository.findById(announcementId);
-        if (announcementOpt.isEmpty()) {
-            throw new RuntimeException("Announcement not found");
+
+    @Transactional
+    public void deleteAnnouncement(Long schoolId, Long announcementId, String requesterEmail) {
+        Announcement announcement = requireAnnouncementInSchool(schoolId, announcementId);
+        User requester = requireUser(requesterEmail);
+
+        boolean isOwner = announcement.getCreatedBy().getId().equals(requester.getId());
+        if (!isOwner && !isSchoolAdmin(announcement.getSchool(), requester)) {
+            throw new AppException(HttpStatus.FORBIDDEN, "You do not have permission to delete this announcement");
         }
-        
-        Announcement announcement = announcementOpt.get();
-        
-        // Verify deleter is the creator
-        if (!announcement.getCreatedBy().equals(deletedBy)) {
-            throw new RuntimeException("Only the creator can delete this announcement");
-        }
-        
-        // Verify deleter is still SCHOOL_ADMIN
-        Optional<Member> deleterOpt = memberRepository.findById(deletedBy);
-        if (deleterOpt.isEmpty() || !"SCHOOL_ADMIN".equals(deleterOpt.get().getRole())) {
-            throw new RuntimeException("Only SCHOOL_ADMIN can delete announcements");
-        }
-        
-        announcement.setActive(false);
-        announcement.setUpdatedAt(LocalDateTime.now());
-        announcementRepository.save(announcement);
+        announcementRepository.delete(announcement);
     }
-    
-    /**
-     * Get all active announcements for a school (visible to all SCHOOL_USER and SCHOOL_ADMIN)
-     */
-    public List<Announcement> getAnnouncementsBySchool(String schoolId) {
-        return announcementRepository.findBySchoolIdAndActiveOrderByCreatedAtDesc(schoolId, true);
+
+    // ---- Helpers ----
+
+    /** APP_ADMIN or SCHOOL_ADMIN of this school. */
+    private boolean isSchoolAdmin(School school, User user) {
+        if (user.getAppRole() == AppRole.APP_ADMIN) return true;
+        var membership = schoolMembershipRepository
+                .findByUserIdAndSchoolId(user.getId(), school.getId())
+                .orElse(null);
+        return membership != null
+                && membership.getStatus() == MembershipStatus.APPROVED
+                && membership.getRole() == MembershipRole.ADMIN;
     }
-    
-    /**
-     * Get announcement by ID
-     */
-    public Optional<Announcement> getAnnouncementById(String announcementId) {
-        return announcementRepository.findById(announcementId);
+
+    private Announcement requireAnnouncementInSchool(Long schoolId, Long announcementId) {
+        Announcement announcement = announcementRepository.findByIdWithDetails(announcementId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Announcement not found"));
+        if (!announcement.getSchool().getId().equals(schoolId)) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Announcement not found");
+        }
+        return announcement;
+    }
+
+    private School requireSchool(Long schoolId) {
+        return schoolRepository.findById(schoolId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "School not found"));
+    }
+
+    private User requireUser(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
     }
 }

@@ -1,0 +1,31 @@
+appId: ${APP_ID}
+---
+- clearKeychain
+- launchApp:
+    clearState: true
+- runFlow:
+        when:
+            visible: "http://localhost:8081"
+        commands:
+            - tapOn: "http://localhost:8081"
+- runFlow:
+        when:
+            visible: "Continue"
+        commands:
+            - tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Sign In"
+    timeout: 20000
+- tapOn: "Sign In"
+- assertVisible: "Welcome Back"
+- tapOn: "Email"
+- inputText: ${EMAIL}
+- tapOn: "Password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    text: "Sign In"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000

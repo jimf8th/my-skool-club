@@ -1,50 +1,113 @@
+# Cloud Run service definition
+# Deploy with: gcloud run services replace cloud-run-service.yaml --region=YOUR_REGION
+#
+# Replace all YOUR_* placeholders with values from scripts/config.sh,
+# or use ./scripts/deploy.sh which sets them automatically via gcloud flags.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: myskoolclub-app
+  name: my-skool-club-app
+  labels:
+    app: my-skool-club
   annotations:
     run.googleapis.com/ingress: all
+    # Public access without an allUsers IAM binding (compatible with DRS policy)
+    run.googleapis.com/invoker-iam-disabled: "true"
 spec:
   template:
     metadata:
       annotations:
-        run.googleapis.com/execution-environment: gen2
-        run.googleapis.com/cpu-throttling: "false"
+        # Attach the Cloud SQL instance for authenticated connector access
+        run.googleapis.com/cloudsql-instances: YOUR_PROJECT:YOUR_REGION:my-skool-club-db
+        # Direct VPC egress is required because Cloud SQL has private IP only
+        run.googleapis.com/network-interfaces: '[{"network":"my-skool-club-vpc","subnetwork":"my-skool-club-run"}]'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+        # Scale to zero when idle to minimise costs
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
     spec:
-      containerConcurrency: 100
-      timeoutSeconds: 300
+      serviceAccountName: my-skool-club-sa@YOUR_PROJECT.iam.gserviceaccount.com
+      timeoutSeconds: 60
+      containerConcurrency: 80
       containers:
-      - image: gcr.io/PROJECT-ID/myskoolclub:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: SPRING_PROFILES_ACTIVE
-          value: "prod"
-        - name: SERVER_PORT
-          value: "8080"
-        resources:
-          limits:
-            cpu: "1"
-            memory: "1Gi"
-          requests:
-            cpu: "0.5"
-            memory: "512Mi"
-        livenessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-  traffic:
-  - percent: 100
-    latestRevision: true
+        - image: YOUR_REGION-docker.pkg.dev/YOUR_PROJECT/my-skool-club/my-skool-club:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: PORT
+              value: "8080"
+            - name: CLOUD_SQL_INSTANCE
+              value: YOUR_PROJECT:YOUR_REGION:my-skool-club-db
+            - name: DB_NAME
+              value: myskoolclub
+            - name: DB_MAX_POOL_SIZE
+              value: "5"
+            - name: FRONTEND_URL
+              value: https://myskoolclub.com
+            - name: EMAIL_VERIFICATION_ENABLED
+              value: "true"
+            - name: MAIL_HOST
+              value: smtp.gmail.com
+            - name: MAIL_PORT
+              value: "587"
+            - name: MAIL_SMTP_AUTH
+              value: "true"
+            - name: MAIL_STARTTLS
+              value: "true"
+            - name: MAIL_STARTTLS_REQUIRED
+              value: "true"
+            - name: MAIL_FROM
+              value: support@myskoolclub.com
+            - name: OPENAI_MODEL
+              value: gpt-4o-mini
+            - name: OPENAI_API_URL
+              value: https://api.openai.com/v1/chat/completions
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-username
+                  key: latest
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-password
+                  key: latest
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: latest
+            - name: MAIL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mail-username
+                  key: latest
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mail-password
+                  key: latest
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-api-key
+                  key: latest
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
