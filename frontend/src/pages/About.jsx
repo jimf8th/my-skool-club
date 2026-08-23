@@ -20,16 +20,7 @@ export default function About() {
       </header>
 
       <main>
-        <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-20">
-          <div className="relative mx-auto w-full max-w-md">
-            <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-indigo-500/30 to-blue-400/10 blur-2xl" aria-hidden="true" />
-            <img
-              src="/jim-edward-portrait.png"
-              alt="Illustrated portrait of Jim Edward"
-              className="relative aspect-[3/4] w-full rounded-[2rem] border border-white/15 object-cover object-top shadow-2xl"
-            />
-          </div>
-
+        <section className="mx-auto max-w-4xl px-5 py-14 sm:px-8 lg:py-20">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-300">About the app</p>
             <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl">Built for stronger school communities.</h1>

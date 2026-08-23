@@ -18,7 +18,6 @@ export default function PublicHome() {
               My Skool Club
             </Link>
             <div className="flex items-center gap-2">
-              <Link to="/about" className="rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/10">About</Link>
               <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/10">Sign In</Link>
               <Link to="/register" className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-indigo-800 shadow">Create Account</Link>
             </div>

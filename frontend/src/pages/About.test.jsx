@@ -10,9 +10,7 @@ describe('About', () => {
 
     expect(screen.getByRole('heading', { name: 'Jim Edward' })).toBeInTheDocument();
     expect(screen.getByText('High School Student · Arizona')).toBeInTheDocument();
-    expect(screen.getByAltText('Illustrated portrait of Jim Edward')).toHaveAttribute(
-      'src', '/jim-edward-portrait.png'
-    );
+    expect(screen.queryByAltText('Illustrated portrait of Jim Edward')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'jim.edward@myskoolclub.com' })).toHaveAttribute(
       'href', 'mailto:jim.edward@myskoolclub.com'
     );
