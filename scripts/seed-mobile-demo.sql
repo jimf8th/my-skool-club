@@ -102,7 +102,22 @@ DELETE FROM content_reports
 WHERE (content_type = 'SCHOOL' AND content_id = :school_id)
    OR (content_type = 'CLUB' AND content_id IN (SELECT id FROM clubs WHERE school_id = :school_id))
    OR (content_type = 'EVENT' AND content_id IN (SELECT id FROM events WHERE school_id = :school_id))
-   OR (content_type = 'ANNOUNCEMENT' AND content_id IN (SELECT id FROM announcements WHERE school_id = :school_id));
+   OR (content_type = 'ANNOUNCEMENT' AND content_id IN (SELECT id FROM announcements WHERE school_id = :school_id))
+   OR reporter_id IN (
+       :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+       :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+       :club_rejected_id, :deletion_id
+   )
+   OR content_author_id IN (
+       :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+       :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+       :club_rejected_id, :deletion_id
+   )
+   OR reviewed_by IN (
+       :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+       :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+       :club_rejected_id, :deletion_id
+   );
 
 DELETE FROM inventory_checkouts
 WHERE item_id IN (
@@ -419,6 +434,44 @@ VALUES
 -- Abort the transaction if the fixture is incomplete or the password hashes
 -- cannot authenticate every reserved demo account. A failed CHECK rolls back
 -- the entire refresh because ON_ERROR_STOP is enabled by the wrapper.
+SELECT json_build_object(
+    'users', (SELECT COUNT(*) FROM users WHERE id IN (
+        :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+        :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+        :club_rejected_id, :deletion_id)),
+    'passwords', (SELECT COUNT(*) FROM users WHERE id IN (
+        :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+        :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+        :club_rejected_id, :deletion_id) AND password = crypt(:'demo_password', password)),
+    'school_memberships', (SELECT COUNT(*) FROM school_memberships WHERE school_id = :school_id),
+    'school_pending', (SELECT COUNT(*) FROM school_memberships WHERE school_id = :school_id AND status = 'PENDING'),
+    'school_rejected', (SELECT COUNT(*) FROM school_memberships WHERE school_id = :school_id AND status = 'REJECTED'),
+    'clubs', (SELECT COUNT(*) FROM clubs WHERE school_id = :school_id),
+    'premium_schools', (SELECT COUNT(*) FROM schools WHERE id = :school_id AND tier = 'PREMIUM'),
+    'club_memberships', (SELECT COUNT(*) FROM club_memberships WHERE club_id IN (:robotics_club_id, :arts_club_id)),
+    'club_pending', (SELECT COUNT(*) FROM club_memberships WHERE club_id IN (:robotics_club_id, :arts_club_id) AND status = 'PENDING'),
+    'club_rejected', (SELECT COUNT(*) FROM club_memberships WHERE club_id IN (:robotics_club_id, :arts_club_id) AND status = 'REJECTED'),
+    'announcements', (SELECT COUNT(*) FROM announcements WHERE school_id = :school_id),
+    'events', (SELECT COUNT(*) FROM events WHERE school_id = :school_id),
+    'rsvp_responses', (SELECT COUNT(DISTINCT response) FROM event_rsvps WHERE event_id IN (SELECT id FROM events WHERE school_id = :school_id)),
+    'invoices', (SELECT COUNT(*) FROM invoices WHERE club_id IN (:robotics_club_id, :arts_club_id)),
+    'invoice_statuses', (SELECT COUNT(DISTINCT status) FROM invoices WHERE club_id IN (:robotics_club_id, :arts_club_id)),
+    'inventory_items', (SELECT COUNT(*) FROM inventory_items WHERE club_id IN (:robotics_club_id, :arts_club_id)),
+    'member_open_checkouts', (SELECT COUNT(*) FROM inventory_checkouts WHERE checked_out_by = :member_id AND checked_in_at IS NULL),
+    'notifications', (SELECT COUNT(*) FROM notifications WHERE user_id IN (
+        :app_admin_id, :school_admin_id, :robotics_admin_id, :arts_admin_id,
+        :member_id, :pending_id, :club_pending_id, :school_rejected_id,
+        :club_rejected_id, :deletion_id)),
+    'reports', (SELECT COUNT(*) FROM content_reports WHERE reporter_id IN (:robotics_admin_id, :arts_admin_id, :member_id)),
+    'report_statuses', (SELECT COUNT(DISTINCT status) FROM content_reports WHERE reporter_id IN (:robotics_admin_id, :arts_admin_id, :member_id)),
+    'deletion_school_memberships', (SELECT COUNT(*) FROM school_memberships WHERE user_id = :deletion_id),
+    'deletion_club_memberships', (SELECT COUNT(*) FROM club_memberships WHERE user_id = :deletion_id),
+    'deletion_open_checkouts', (SELECT COUNT(*) FROM inventory_checkouts WHERE checked_out_by = :deletion_id AND checked_in_at IS NULL),
+    'deletion_invoices', (SELECT COUNT(*) FROM invoices WHERE created_by = :deletion_id),
+    'deletion_reports', (SELECT COUNT(*) FROM content_reports WHERE reporter_id = :deletion_id),
+    'deletion_notifications', (SELECT COUNT(*) FROM notifications WHERE user_id = :deletion_id)
+) AS app_review_fixture_counts;
+
 CREATE TEMP TABLE demo_seed_assertion (
     passed BOOLEAN NOT NULL CHECK (passed)
 ) ON COMMIT DROP;
