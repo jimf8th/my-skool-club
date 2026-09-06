@@ -1,0 +1,26 @@
+appId: com.myskoolclub.app.test
+name: Public authentication smoke
+tags:
+  - smoke
+  - public
+---
+- clearKeychain
+- launchApp:
+    clearState: true
+- assertVisible: "Welcome Back"
+- assertVisible: "Sign in to continue"
+- tapOn: "Sign In"
+- assertVisible: "Please fill in all fields"
+- tapOn: "Don't have an account? Sign Up"
+- assertVisible: "Create Account"
+- assertVisible:
+    text: "Create Account"
+    enabled: false
+- assertVisible: "I confirm I am at least 13 and agree to the Terms, Privacy Policy, and Community Standards."
+- tapOn: "Already have an account? Sign In"
+- assertVisible: "Welcome Back"
+- tapOn: "Forgot Password?"
+- assertVisible: "Reset your password"
+- assertVisible: "We’ll email a six-digit code if an eligible account exists."
+- tapOn: "Back to Sign In"
+- assertVisible: "Welcome Back"

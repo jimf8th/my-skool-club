@@ -1,86 +1,29 @@
-/* Custom styles for MySkoolClub */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 body {
-  margin: 0;
-  padding: 0;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #213547;
+  background-color: #ffffff;
 }
 
-/* Remove default margins from html and ensure full width */
-html {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}
-
-/* Ensure root div takes full width */
-#root {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}
-
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Form labels - left alignment for all forms */
-.form-label,
-.col-form-label {
-  text-align: left !important;
-}
-
-/* Custom hover effects for cards */
-.card {
-  transition: transform 0.2s ease-in-out;
-}
-
-.card:hover {
-  transform: translateY(-5px);
-}
-
-/* Social links styling */
-.social-links a {
-  font-size: 1.2rem;
-  transition: opacity 0.2s ease-in-out;
-}
-
-.social-links a:hover {
-  opacity: 0.7;
-  text-decoration: none;
-}
-
-/* Custom button animations */
-.btn {
-  transition: all 0.2s ease-in-out;
-}
-
-.btn:hover {
-  transform: translateY(-1px);
-}
-
-/* System status component styling */
-.system-status {
-  font-size: 0.8rem;
-}
-
-.system-status .status-item {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.system-status .fa-circle {
-  font-size: 0.6rem;
-}
-
-.system-status .text-success {
-  color: #28a745 !important;
-}
-
-.system-status .text-danger {
-  color: #dc3545 !important;
-}
-
-.system-status .text-warning {
-  color: #ffc107 !important;
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-weight: 500;
 }

@@ -1,0 +1,19 @@
+# Application tables required by the current backend.
+# Flyway creates these in PostgreSQL's public schema.
+users
+schools
+school_memberships
+clubs
+club_memberships
+notifications
+invoices
+invoice_line_items
+invoice_audit_logs
+events
+event_rsvps
+announcements
+inventory_items
+inventory_checkouts
+content_reports
+friend_invitations
+school_requests

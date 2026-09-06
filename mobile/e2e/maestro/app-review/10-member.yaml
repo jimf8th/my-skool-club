@@ -1,0 +1,45 @@
+appId: ${APP_ID}
+name: App Review approved-member rehearsal
+tags:
+  - app-review
+  - member
+---
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${E2E_MEMBER_EMAIL}
+      PASSWORD: ${E2E_MEMBER_PASSWORD}
+- assertVisible: "Quick Actions"
+- tapOn: "Announcements"
+- extendedWaitUntil:
+    visible: "Announcements"
+    timeout: 20000
+- assertVisible: "Welcome to a new week at Cypress Ridge"
+- tapOn: "Report Welcome to a new week at Cypress Ridge"
+- assertVisible: "Report content"
+- assertVisible: "Reports are confidential and reviewed by My Skool Club app administrators."
+- tapOn: "Close report form"
+- tapOn:
+    point: "92%,10%"
+- tapOn: "Events"
+- extendedWaitUntil:
+    visible: "Robotics Open Lab"
+    timeout: 20000
+- assertVisible: "Going"
+- assertVisible: "Maybe"
+- assertVisible: "Not Going"
+- tapOn: "Report Robotics Open Lab"
+- assertVisible: "Report content"
+- tapOn: "Close report form"
+- tapOn: "Schools"
+- extendedWaitUntil:
+    visible: "Cypress Ridge Academy"
+    timeout: 20000
+- tapOn: "Clubs"
+- extendedWaitUntil:
+    visible: "Robotics & Innovation Club"
+    timeout: 20000
+- tapOn: "Profile"
+- assertVisible: "Account Info"
+- assertVisible: "Settings"
+- assertVisible: "Delete Account"

@@ -1,0 +1,40 @@
+appId: ${APP_ID}
+name: App Review public and authentication rehearsal
+tags:
+  - app-review
+  - public
+---
+- clearKeychain
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: "http://localhost:8081"
+    commands:
+      - tapOn: "http://localhost:8081"
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Go home"
+    commands:
+      - tapOn: "Close"
+- extendedWaitUntil:
+    visible: "Sign In"
+    timeout: 20000
+- assertVisible: "Create Account"
+- scroll
+- assertVisible: "Get Started"
+- tapOn: "Get Started"
+- assertVisible: "Create Account"
+- assertVisible: "I confirm I am at least 13 and agree to the Terms, Privacy Policy, and Community Standards."
+- tapOn: "Already have an account? Sign In"
+- assertVisible: "Welcome Back"
+- tapOn: "Forgot Password?"
+- assertVisible: "Reset your password"
+- assertVisible: "We’ll email a six-digit code if an eligible account exists."
+- tapOn: "Back to Sign In"
+- assertVisible: "Welcome Back"

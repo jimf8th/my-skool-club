@@ -1,0 +1,34 @@
+appId: com.myskoolclub.app.test
+name: Administrator management entry-point smoke
+tags:
+  - smoke
+  - authenticated
+  - admin
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: ${E2E_ADMIN_EMAIL}
+      PASSWORD: ${E2E_ADMIN_PASSWORD}
+- assertVisible: "App Administrator"
+- tapOn: "Schools"
+- extendedWaitUntil:
+    visible: "Add School"
+    timeout: 20000
+- tapOn: "Add School"
+- assertVisible: "School Name *"
+- assertVisible: "School Admin *"
+- tapOn:
+    id: "close-add-school-form"
+- tapOn: "Clubs"
+- extendedWaitUntil:
+    visible: "Add Club"
+    timeout: 20000
+- tapOn: "Add Club"
+- assertVisible: "Club Name *"
+- assertVisible: "First Club Admin *"
+- tapOn:
+    id: "close-add-club-form"
+- tapOn: "Profile"
+- assertVisible: "App Administrator"
+- assertVisible: "Account Info"
