@@ -1,10 +1,10 @@
 package com.myskoolclub.backend.controller;
 
 import com.myskoolclub.backend.dto.AcceptFriendInvitationRequest;
-import com.myskoolclub.backend.dto.AuthResponse;
 import com.myskoolclub.backend.dto.CreateFriendInvitationRequest;
 import com.myskoolclub.backend.dto.FriendInvitationDetailsResponse;
 import com.myskoolclub.backend.dto.InvitationTokenRequest;
+import com.myskoolclub.backend.dto.SessionResponse;
 import com.myskoolclub.backend.service.FriendInvitationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,18 +42,11 @@ public class FriendInvitationController {
         return ResponseEntity.ok(invitationService.details(request.token()));
     }
 
-    @PostMapping("/auth/invitations/send-code")
-    public ResponseEntity<Map<String, String>> sendCode(
-            @Valid @RequestBody InvitationTokenRequest request) {
-        invitationService.sendVerificationCode(request.token());
-        return ResponseEntity.ok(Map.of(
-                "message", "A six-digit verification code was sent to the invited email."
-        ));
-    }
-
     @PostMapping("/auth/invitations/accept")
-    public ResponseEntity<AuthResponse> accept(
+    public ResponseEntity<SessionResponse> accept(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody AcceptFriendInvitationRequest request) {
-        return ResponseEntity.ok(invitationService.accept(request));
+        return ResponseEntity.ok(invitationService.accept(
+                AuthController.bearerToken(authorization), request));
     }
 }

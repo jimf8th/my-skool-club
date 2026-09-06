@@ -63,7 +63,8 @@ describe('mobile environment definitions', () => {
     const config = buildAppConfig({ config: baseAppConfig });
 
     expect(config.name).toBe(name);
-    expect(config.scheme).toBe(scheme);
+    expect(config.scheme[0]).toBe(scheme);
+    expect(config.scheme[1]).toContain('com.googleusercontent.apps.');
     expect(config.ios.bundleIdentifier).toBe(identifier);
     expect(config.android.package).toBe(identifier);
     expect(config.extra.appEnvironment).toBe(appEnv);

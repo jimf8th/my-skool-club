@@ -1,23 +1,32 @@
 import React, { useState } from 'react';
-import { Outlet, Link, NavLink } from 'react-router-dom';
+import { Outlet, Link, NavLink, useNavigate } from 'react-router-dom';
+import { Home as HomeIcon, School, Users, Calendar, Inbox, ShieldAlert, UserCog, User, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { isAppAdmin } = useAuth();
+  const { isAppAdmin, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    logout();
+    navigate('/login');
+  };
 
   const navLinks = [
-    { to: '/', label: 'Home', icon: '🏠' },
-    { to: '/schools', label: 'Schools', icon: '🎓' },
-    { to: '/clubs', label: 'Clubs', icon: '👥' },
-    { to: '/events', label: 'Events', icon: '📅' },
-    { to: '/profile', label: 'Profile', icon: '👤' },
+    { to: '/', label: 'Home', icon: HomeIcon },
+    { to: '/schools', label: 'Schools', icon: School },
+    { to: '/clubs', label: 'Clubs', icon: Users },
+    { to: '/events', label: 'Events', icon: Calendar },
     ...(isAppAdmin
       ? [
-        { to: '/school-requests', label: 'School Requests', icon: '📨' },
-        { to: '/moderation', label: 'Moderation', icon: '🛡️' },
+        { to: '/school-requests', label: 'School Requests', icon: Inbox },
+        { to: '/moderation', label: 'Moderation', icon: ShieldAlert },
+        { to: '/accounts', label: 'Accounts', icon: UserCog },
       ]
       : []),
+    { to: '/profile', label: 'Profile', icon: User },
   ];
 
   return (
@@ -40,7 +49,7 @@ export default function Layout() {
             </Link>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex space-x-6">
+            <nav className="hidden md:flex items-center space-x-2">
               {navLinks.map(link => (
                 <NavLink
                   key={link.to}
@@ -53,39 +62,30 @@ export default function Layout() {
                     }`
                   }
                 >
-                  <span className="mr-2">{link.icon}</span>
+                  <link.icon className="mr-2 h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
                   {link.label}
                 </NavLink>
               ))}
+              <button
+                onClick={handleLogout}
+                className="ml-2 flex items-center px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <LogOut className="mr-2 h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                Log Out
+              </button>
             </nav>
 
             {/* Mobile Menu Button */}
             <button
               className="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100"
               onClick={() => setMenuOpen(!menuOpen)}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                {menuOpen ? (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                ) : (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                )}
-              </svg>
+              {menuOpen ? (
+                <X className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+              ) : (
+                <Menu className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
@@ -107,10 +107,17 @@ export default function Layout() {
                     }`
                   }
                 >
-                  <span className="mr-2">{link.icon}</span>
+                  <link.icon className="mr-2 h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
                   {link.label}
                 </NavLink>
               ))}
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-50"
+              >
+                <LogOut className="mr-2 h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                Log Out
+              </button>
             </nav>
           </div>
         )}
@@ -134,10 +141,17 @@ export default function Layout() {
                 }`
               }
             >
-              <span className="text-2xl">{link.icon}</span>
+              <link.icon className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
               <span className="text-xs mt-1">{link.label}</span>
             </NavLink>
           ))}
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center justify-center flex-1 h-full text-red-500"
+          >
+            <LogOut className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+            <span className="text-xs mt-1">Log Out</span>
+          </button>
         </div>
       </nav>
 

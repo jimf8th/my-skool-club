@@ -4,7 +4,7 @@ import { Text, TextInput, Button, Surface, Snackbar, Checkbox } from 'react-nati
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBar } from 'expo-status-bar';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import { openPrivacyPolicy, openTerms, openCommunityStandards } from '../../utils/legalLinks';
 
 const RULES = [
@@ -78,7 +78,7 @@ export default function RegisterScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <View style={styles.header}>
-            <View style={styles.headerIcon}><Text style={styles.headerEmoji}>🎓</Text></View>
+            <View style={styles.headerIcon}><MaterialCommunityIcons name="school-outline" size={28} color="#ffffff" /></View>
             <Text variant="headlineMedium" style={styles.title}>Create Account</Text>
             <Text variant="bodyMedium" style={styles.subtitle}>Join My Skool Club — it's free!</Text>
           </View>

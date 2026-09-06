@@ -19,13 +19,13 @@ jest.mock('expo-constants', () => ({
 }));
 
 jest.mock('../../utils/authStorage', () => ({
-  getAuthToken: jest.fn(),
   clearAuthSession: jest.fn(),
 }));
 
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { clearAuthSession, getAuthToken } from '../../utils/authStorage';
+import { clearAuthSession } from '../../utils/authStorage';
+import { currentIdToken } from '../firebase';
 import {
   accountAPI,
   announcementsAPI,
@@ -47,8 +47,8 @@ const mockAxiosCreate = axios.create;
 const mockApi = mockAxiosCreate.mock.results[0].value;
 const mockRequestUse = mockApi.interceptors.request.use;
 const mockResponseUse = mockApi.interceptors.response.use;
-const mockGetAuthToken = getAuthToken;
 const mockClearAuthSession = clearAuthSession;
+const mockCurrentIdToken = currentIdToken;
 const mockConstants = Constants;
 const apiCreateConfig = mockAxiosCreate.mock.calls[0][0];
 const requestFulfilled = mockRequestUse.mock.calls[0][0];
@@ -64,22 +64,16 @@ const eventData = { title: 'Fundraiser', location: 'Gym', eventTime: '2030-01-01
 const announcementData = { title: 'Welcome', body: 'Welcome back' };
 
 const endpointCases = [
-  { name: 'auth.register', method: 'post', args: ['/auth/register', schoolData], invoke: () => authAPI.register(schoolData) },
-  { name: 'auth.login', method: 'post', args: ['/auth/login', { email: 'a@b.com', password: 'secret' }], invoke: () => authAPI.login('a@b.com', 'secret') },
-  { name: 'auth.verifyEmail', method: 'post', args: ['/auth/verify-email', { email: 'a@b.com', code: '123456' }], invoke: () => authAPI.verifyEmail('a@b.com', '123456') },
-  { name: 'auth.resendVerification', method: 'post', args: ['/auth/resend-verification', { email: 'a@b.com' }], invoke: () => authAPI.resendVerification('a@b.com') },
-  { name: 'auth.forgotPassword', method: 'post', args: ['/auth/forgot-password', { email: 'a@b.com' }], invoke: () => authAPI.forgotPassword('a@b.com') },
-  { name: 'auth.resetPassword', method: 'post', args: ['/auth/reset-password', { email: 'a@b.com', code: '654321', newPassword: 'NewPassword1!' }], invoke: () => authAPI.resetPassword('a@b.com', '654321', 'NewPassword1!') },
+  { name: 'auth.syncSession', method: 'post', args: ['/auth/session', {}], invoke: () => authAPI.syncSession() },
   { name: 'auth.getInvitationDetails', method: 'post', args: ['/auth/invitations/details', { token: 'invite-token' }], invoke: () => authAPI.getInvitationDetails('invite-token') },
-  { name: 'auth.sendInvitationCode', method: 'post', args: ['/auth/invitations/send-code', { token: 'invite-token' }], invoke: () => authAPI.sendInvitationCode('invite-token') },
-  { name: 'auth.acceptInvitation', method: 'post', args: ['/auth/invitations/accept', { token: 'invite-token', code: '123456', password: 'StrongPassword1!', ageConfirmed: true, acceptedTerms: true }], invoke: () => authAPI.acceptInvitation({ token: 'invite-token', code: '123456', password: 'StrongPassword1!', ageConfirmed: true, acceptedTerms: true }) },
+  { name: 'auth.acceptInvitation', method: 'post', args: ['/auth/invitations/accept', { token: 'invite-token', ageConfirmed: true, acceptedTerms: true }], invoke: () => authAPI.acceptInvitation('invite-token', { ageConfirmed: true, acceptedTerms: true }) },
   { name: 'invitations.inviteFriend', method: 'post', args: ['/invitations', { firstName: 'Maya', lastName: 'Member', email: 'maya@example.com' }], invoke: () => invitationsAPI.inviteFriend({ firstName: 'Maya', lastName: 'Member', email: 'maya@example.com' }) },
 
   { name: 'contentReports.create', method: 'post', args: ['/content-reports', { contentType: 'EVENT', contentId: 40, reason: 'SPAM', details: 'Repeated post' }], invoke: () => contentReportsAPI.create('EVENT', 40, 'SPAM', 'Repeated post') },
   { name: 'contentReports.mine', method: 'get', args: ['/content-reports/mine'], invoke: () => contentReportsAPI.mine() },
 
   { name: 'account.getCurrentAccount', method: 'get', args: ['/account'], invoke: () => accountAPI.getCurrentAccount() },
-  { name: 'account.deleteAccount', method: 'delete', args: ['/account', { data: { password: 'secret' } }], invoke: () => accountAPI.deleteAccount('secret'), noDataReturn: true },
+  { name: 'account.deleteAccount', method: 'delete', args: ['/account'], invoke: () => accountAPI.deleteAccount(), noDataReturn: true },
 
   { name: 'schools.getAll', method: 'get', args: ['/schools'], invoke: () => schoolsAPI.getAll() },
   { name: 'schools.getById', method: 'get', args: ['/schools/10'], invoke: () => schoolsAPI.getById(10) },
@@ -246,16 +240,16 @@ describe('API client configuration', () => {
 
 describe('request interceptor', () => {
   beforeEach(() => {
-    mockGetAuthToken.mockReset().mockResolvedValue(null);
+    mockCurrentIdToken.mockReset().mockResolvedValue(null);
   });
 
-  it('adds the stored bearer token', async () => {
-    mockGetAuthToken.mockResolvedValue('jwt-token');
+  it('adds the firebase bearer token', async () => {
+    mockCurrentIdToken.mockResolvedValue('firebase-token');
     const config = { headers: { Accept: 'application/json' } };
 
     await expect(requestFulfilled(config)).resolves.toBe(config);
 
-    expect(config.headers).toEqual({ Accept: 'application/json', Authorization: 'Bearer jwt-token' });
+    expect(config.headers).toEqual({ Accept: 'application/json', Authorization: 'Bearer firebase-token' });
   });
 
   it('leaves headers unchanged without a token', async () => {

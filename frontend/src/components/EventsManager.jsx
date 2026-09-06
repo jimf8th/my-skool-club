@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, MapPin, ChevronRight } from 'lucide-react';
 import Modal from './Modal';
 import ReportContentModal from './ReportContentModal';
 import { eventsService } from '../services/api';
@@ -76,8 +77,8 @@ export default function EventsManager({ schoolId, currentUser, canCreate, isScho
         </form>
       ) : view === 'detail' ? (
         loading || !active ? <p className="py-8 text-center text-gray-500">Loading…</p> : <div>
-          <button type="button" onClick={() => { setView('list'); setActive(null); }} className="mb-4 text-sm font-semibold text-indigo-700">← All events</button>
-          <div className="rounded-xl bg-gray-50 p-4"><p className="font-semibold text-gray-900">{new Date(active.eventTime).toLocaleString()}</p><p className="mt-1 text-sm text-gray-600">📍 {active.location}</p><p className="mt-2 text-xs text-gray-500">Created by {active.createdByName}</p></div>
+          <button type="button" onClick={() => { setView('list'); setActive(null); }} className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-indigo-700"><ArrowLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> All events</button>
+          <div className="rounded-xl bg-gray-50 p-4"><p className="font-semibold text-gray-900">{new Date(active.eventTime).toLocaleString()}</p><p className="mt-1 flex items-center gap-1 text-sm text-gray-600"><MapPin className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> {active.location}</p><p className="mt-2 text-xs text-gray-500">Created by {active.createdByName}</p></div>
           <h3 className="mt-5 font-bold">Your RSVP</h3><div className="mt-2 grid grid-cols-3 gap-2">{Object.entries(RSVP_LABELS).map(([value, label]) => <button type="button" key={value} disabled={saving} onClick={() => rsvp(value)} className={`rounded-lg border px-2 py-2 text-sm font-semibold ${active.myResponse === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'text-gray-600'}`}>{label}</button>)}</div>
           <h3 className="mt-6 font-bold">Responses ({(active.rsvps || []).length})</h3><div className="mt-2 divide-y rounded-xl border">{(active.rsvps || []).length === 0 ? <p className="p-4 text-sm text-gray-500">No responses yet.</p> : active.rsvps.map((item) => <div key={item.userId} className="flex justify-between p-3 text-sm"><span>{item.userFirstName} {item.userLastName}</span><span className="font-semibold">{RSVP_LABELS[item.response]}</span></div>)}</div>
           <div className="mt-5 flex justify-end">{isSchoolAdmin || active.createdByUserId === currentUser?.id ? <button type="button" onClick={remove} className="rounded-lg border border-red-300 px-4 py-2 font-semibold text-red-700">Delete Event</button> : <button type="button" onClick={() => setReportTarget(active)} className="rounded-lg border px-4 py-2 font-semibold text-gray-700">Report Event</button>}</div>
@@ -85,7 +86,7 @@ export default function EventsManager({ schoolId, currentUser, canCreate, isScho
       ) : (
         <>
           {canCreate && <button type="button" onClick={() => setView('create')} className="mb-4 rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">+ New Event</button>}
-          {loading ? <p className="py-8 text-center text-gray-500">Loading…</p> : events.length === 0 ? <p className="rounded-xl bg-gray-50 p-8 text-center text-gray-500">No events yet.</p> : <div className="divide-y rounded-xl border">{events.map((item) => <button type="button" key={item.id} onClick={() => openEvent(item.id)} className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50"><div><p className="font-bold text-gray-900">{item.title}</p><p className="mt-1 text-sm text-gray-500">{new Date(item.eventTime).toLocaleString()} · {item.location}</p><p className="mt-1 text-xs text-gray-400">{item.yesCount} going · {item.maybeCount} maybe · {item.noCount} not going</p></div><span className="text-gray-400">›</span></button>)}</div>}
+          {loading ? <p className="py-8 text-center text-gray-500">Loading…</p> : events.length === 0 ? <p className="rounded-xl bg-gray-50 p-8 text-center text-gray-500">No events yet.</p> : <div className="divide-y rounded-xl border">{events.map((item) => <button type="button" key={item.id} onClick={() => openEvent(item.id)} className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-gray-50"><div><p className="font-bold text-gray-900">{item.title}</p><p className="mt-1 text-sm text-gray-500">{new Date(item.eventTime).toLocaleString()} · {item.location}</p><p className="mt-1 text-xs text-gray-400">{item.yesCount} going · {item.maybeCount} maybe · {item.noCount} not going</p></div><ChevronRight className="h-5 w-5 flex-shrink-0 text-gray-400" strokeWidth={2} aria-hidden="true" /></button>)}</div>}
         </>
       )}
     </Modal>

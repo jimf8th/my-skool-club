@@ -30,6 +30,7 @@ describe('navigation layouts', () => {
     Tabs.mockClear();
     Stack.Screen.mockClear();
     Tabs.Screen.mockClear();
+    useAuth.mockReturnValue({ user: member, logout: jest.fn() });
   });
 
   it('declares every authentication route', () => {
@@ -56,6 +57,7 @@ describe('navigation layouts', () => {
       ['clubs', 'Clubs'],
       ['profile', 'Profile'],
       ['school-requests', 'School Requests'],
+      ['accounts', 'Accounts'],
     ]);
 
     expect(Tabs).toHaveBeenCalledWith(expect.objectContaining({
@@ -129,6 +131,15 @@ describe('HomeScreen', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/school-requests');
   });
 
+  it('routes app administrators to account management', () => {
+    useAuth.mockReturnValue({ user: admin });
+    renderWithProviders(<HomeScreen />);
+
+    fireEvent.press(screen.getByText('Accounts'));
+
+    expect(mockRouter.push).toHaveBeenCalledWith('/accounts');
+  });
+
   it('renders a regular member greeting, school, admin badge, and empty activity', () => {
     useAuth.mockReturnValue({ user: member });
     useMySchool.mockReturnValue({
@@ -140,7 +151,7 @@ describe('HomeScreen', () => {
 
     renderWithProviders(<HomeScreen />);
 
-    expect(screen.getByText('Welcome back, Maya! 👋')).toBeOnTheScreen();
+    expect(screen.getByText('Welcome back, Maya!')).toBeOnTheScreen();
     expect(screen.getByText('North Valley High School')).toBeOnTheScreen();
     expect(screen.getByText('Admin')).toBeOnTheScreen();
     expect(screen.getByText('No recent activity yet. Start exploring!')).toBeOnTheScreen();
@@ -149,7 +160,7 @@ describe('HomeScreen', () => {
   it('uses the generic greeting when a member has no first name', () => {
     useAuth.mockReturnValue({ user: { ...member, firstName: '' } });
     renderWithProviders(<HomeScreen />);
-    expect(screen.getByText('Welcome to My Skool Club! 🎓')).toBeOnTheScreen();
+    expect(screen.getByText('Welcome to My Skool Club!')).toBeOnTheScreen();
   });
 
   it('routes the member school, club, and event quick actions', () => {

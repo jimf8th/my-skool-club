@@ -6,7 +6,7 @@ import {
 import { Text, Surface, Divider, TextInput, Button } from 'react-native-paper';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import { openAbout, openPrivacyPolicy, openTerms, openCommunityStandards, openSupport, emailSupport } from '../../utils/legalLinks';
 import InviteFriendModal from '../../components/InviteFriendModal';
 
@@ -14,7 +14,6 @@ export default function ProfileScreen() {
   const { user, logout, deleteAccount } = useAuth();
   const router = useRouter();
   const [deleteVisible, setDeleteVisible] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -34,16 +33,11 @@ export default function ProfileScreen() {
   const closeDeleteDialog = () => {
     if (deleting) return;
     setDeleteVisible(false);
-    setDeletePassword('');
     setDeleteConfirmation('');
     setDeleteError('');
   };
 
   const handleDeleteAccount = async () => {
-    if (!deletePassword) {
-      setDeleteError('Enter your password.');
-      return;
-    }
     if (deleteConfirmation !== 'DELETE') {
       setDeleteError('Type DELETE exactly to confirm.');
       return;
@@ -51,7 +45,7 @@ export default function ProfileScreen() {
 
     setDeleting(true);
     setDeleteError('');
-    const result = await deleteAccount(deletePassword);
+    const result = await deleteAccount();
     setDeleting(false);
 
     if (result.success) {
@@ -176,18 +170,6 @@ export default function ProfileScreen() {
             </Text>
 
             <TextInput
-              label="Current password"
-              accessibilityLabel="Current password"
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="current-password"
-              mode="outlined"
-              disabled={deleting}
-              style={styles.deleteInput}
-            />
-            <TextInput
               label='Type "DELETE" to confirm'
               accessibilityLabel='Type "DELETE" to confirm'
               value={deleteConfirmation}
@@ -211,7 +193,7 @@ export default function ProfileScreen() {
                 accessibilityLabel="Confirm account deletion"
                 onPress={handleDeleteAccount}
                 loading={deleting}
-                disabled={deleting || !deletePassword || deleteConfirmation !== 'DELETE'}
+                disabled={deleting || deleteConfirmation !== 'DELETE'}
               >
                 Delete Account
               </Button>

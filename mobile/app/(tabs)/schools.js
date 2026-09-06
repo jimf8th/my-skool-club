@@ -5,7 +5,7 @@ import {
   FlatList, Alert, Linking,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import { schoolsAPI, usersAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { fuzzyFilter } from '../../utils/fuzzySearch';

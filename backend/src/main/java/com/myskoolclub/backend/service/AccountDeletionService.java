@@ -5,10 +5,10 @@ import com.myskoolclub.backend.model.AppRole;
 import com.myskoolclub.backend.model.InvoiceStatus;
 import com.myskoolclub.backend.model.User;
 import com.myskoolclub.backend.repository.UserRepository;
+import com.myskoolclub.backend.security.FirebaseTokenVerifier;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,23 +21,21 @@ public class AccountDeletionService {
     static final String DELETED_USER_EMAIL = "deleted-user@myskoolclub.invalid";
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final FirebaseTokenVerifier firebaseTokenVerifier;
     private final EntityManager entityManager;
 
     /**
      * Permanently removes the account and personal/user-owned data while
      * preserving institutional, accounting, and completed asset-audit records.
      * Preserved records are detached from the person and attributed to the
-     * disabled internal "Deleted User" identity.
+     * disabled internal "Deleted User" identity. The caller is authenticated
+     * by a Firebase token and confirms deletion in the client UI.
      */
     @Transactional
-    public void deleteAccount(String email, String password) {
+    public void deleteAccount(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Account not found"));
-
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Password is incorrect");
-        }
+        String firebaseUid = user.getFirebaseUid();
 
         Long openCheckouts = entityManager.createQuery("""
                 select count(c) from InventoryCheckout c
@@ -148,8 +146,6 @@ public class AccountDeletionService {
         executeUpdate("delete from SchoolMembership m where m.user.id = :userId", userId);
         executeUpdate("delete from ClubMembership m where m.user.id = :userId", userId);
         executeUpdate("delete from Notification n where n.user.id = :userId", userId);
-        executeUpdate("delete from EmailVerification e where e.user.id = :userId", userId);
-        executeUpdate("delete from PasswordResetCode p where p.user.id = :userId", userId);
         entityManager.createQuery("""
                 delete from FriendInvitation f
                 where f.invitedBy.id = :userId or lower(f.email) = lower(:email)
@@ -161,13 +157,16 @@ public class AccountDeletionService {
         entityManager.flush();
         entityManager.remove(user);
         entityManager.flush();
+
+        if (firebaseUid != null) {
+            firebaseTokenVerifier.deleteUser(firebaseUid);
+        }
     }
 
     private User getOrCreateDeletedUser() {
         return userRepository.findByEmail(DELETED_USER_EMAIL)
                 .orElseGet(() -> userRepository.saveAndFlush(User.builder()
                         .email(DELETED_USER_EMAIL)
-                        .password(passwordEncoder.encode(UUID.randomUUID().toString()))
                         .firstName("Deleted")
                         .lastName("User")
                         .appRole(AppRole.APP_USER)

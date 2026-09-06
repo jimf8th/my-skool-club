@@ -13,6 +13,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmailIgnoreCase(String email);
 
+    Optional<User> findByGoogleSub(String googleSub);
+
+    Optional<User> findByFirebaseUid(String firebaseUid);
+
     boolean existsByEmail(String email);
 
     boolean existsByEmailIgnoreCase(String email);
@@ -20,4 +24,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByEnabledTrueOrderByFirstNameAscLastNameAsc();
 
     List<User> findByAppRoleAndEnabledTrue(AppRole appRole);
+
+    List<User> findAllByOrderByFirstNameAscLastNameAsc();
+
+    List<User> findByEmailContainingIgnoreCaseOrderByFirstNameAscLastNameAsc(String email);
 }

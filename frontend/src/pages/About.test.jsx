@@ -14,10 +14,10 @@ describe('About', () => {
     expect(screen.getByRole('link', { name: 'jim.edward@myskoolclub.com' })).toHaveAttribute(
       'href', 'mailto:jim.edward@myskoolclub.com'
     );
-    expect(screen.getByRole('link', { name: 'LinkedIn ↗' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href', 'https://www.linkedin.com/in/jim-faith-edward-5b15a242a/'
     );
-    expect(screen.getByRole('link', { name: 'View on GitHub ↗' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'View on GitHub' })).toHaveAttribute(
       'href', 'https://github.com/jimf8th/my-skool-club'
     );
     expect(screen.getByText('Contributions are welcome.')).toBeInTheDocument();

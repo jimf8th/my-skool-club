@@ -13,8 +13,8 @@ import TermsOfService from './pages/TermsOfService';
 import CommunityStandards from './pages/CommunityStandards';
 import Support from './pages/Support';
 import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
 import Moderation from './pages/Moderation';
+import Accounts from './pages/Accounts';
 import Layout from './components/Layout';
 import PublicHome from './pages/PublicHome';
 import Events from './pages/Events';
@@ -61,7 +61,6 @@ function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/about" element={<About />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/request-school" element={<RequestSchool />} />
           <Route
@@ -83,6 +82,7 @@ function App() {
               }
             />
             <Route path="school-requests" element={<AppAdminRoute><SchoolRequests /></AppAdminRoute>} />
+            <Route path="accounts" element={<AppAdminRoute><Accounts /></AppAdminRoute>} />
           </Route>
         </Routes>
       </AuthProvider>

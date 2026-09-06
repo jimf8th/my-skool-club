@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, FlatList, Alert,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from './Icon';
 import { announcementsAPI } from '../services/api';
 import { getFriendlyErrorMessage } from '../utils/errors';
 import ReportContentModal from './ReportContentModal';

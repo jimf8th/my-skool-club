@@ -25,10 +25,20 @@ backend/build/
 
 # Environment variables and secrets
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 .env.prod
 backend/src/main/resources/application-local.properties
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+GoogleService-Info.plist
+google-services.json
 
 # Logs
 *.log
@@ -123,6 +133,7 @@ scripts/*
 !scripts/seed-mobile-demo.sql
 !scripts/seed-app-review-production.sh
 !scripts/app-review-production-preflight.sql
+!scripts/reset-users-firebase.sh
 !scripts/record-app-review-simulator.sh
 
 # Expo keeps machine-specific device and development-server state here.

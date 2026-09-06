@@ -134,7 +134,7 @@ gcloud iam service-accounts describe "$SA_EMAIL" \
     --project="$GCP_PROJECT_ID" &>/dev/null || \
     err "Automatic provisioning did not create service account '${SA_EMAIL}'."
 
-for secret in db-username db-password jwt-secret mail-username mail-password openai-api-key; do
+for secret in db-username db-password mail-username mail-password openai-api-key; do
     if ! ENABLED_VERSION="$(gcloud secrets versions list "$secret" \
             --project="$GCP_PROJECT_ID" \
             --filter='state=ENABLED' \
@@ -207,7 +207,7 @@ gcloud run jobs deploy "$MIGRATION_JOB_NAME" \
     --subnet="$VPC_SUBNET_NAME" \
     --vpc-egress=private-ranges-only \
     --set-env-vars="SPRING_PROFILES_ACTIVE=prod,CLOUD_SQL_INSTANCE=${CLOUD_SQL_CONNECTION},DB_NAME=${DB_NAME},DB_MAX_POOL_SIZE=2" \
-    --set-secrets="DB_USERNAME=db-username:latest,DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest" \
+    --set-secrets="DB_USERNAME=db-username:latest,DB_PASSWORD=db-password:latest" \
     --args="--spring.main.web-application-type=none,--app.database.migration-only=true" \
     --tasks=1 \
     --max-retries=0 \
@@ -237,8 +237,8 @@ gcloud run deploy "$SERVICE_NAME" \
     --network="$VPC_NETWORK_NAME" \
     --subnet="$VPC_SUBNET_NAME" \
     --vpc-egress=private-ranges-only \
-    --set-env-vars="SPRING_PROFILES_ACTIVE=prod,EMAIL_VERIFICATION_ENABLED=true,CLOUD_SQL_INSTANCE=${CLOUD_SQL_CONNECTION},DB_NAME=${DB_NAME},DB_MAX_POOL_SIZE=5,FRONTEND_URL=${PUBLIC_BASE_URL},MAIL_HOST=${MAIL_HOST},MAIL_PORT=${MAIL_PORT},MAIL_SMTP_AUTH=${MAIL_SMTP_AUTH},MAIL_STARTTLS=${MAIL_STARTTLS},MAIL_STARTTLS_REQUIRED=${MAIL_STARTTLS_REQUIRED},MAIL_FROM=${MAIL_FROM},OPENAI_MODEL=${OPENAI_MODEL},OPENAI_API_URL=${OPENAI_API_URL}" \
-    --set-secrets="DB_USERNAME=db-username:latest,DB_PASSWORD=db-password:latest,JWT_SECRET=jwt-secret:latest,MAIL_USERNAME=mail-username:latest,MAIL_PASSWORD=mail-password:latest,OPENAI_API_KEY=openai-api-key:latest" \
+    --set-env-vars="SPRING_PROFILES_ACTIVE=prod,EMAIL_VERIFICATION_ENABLED=true,CLOUD_SQL_INSTANCE=${CLOUD_SQL_CONNECTION},DB_NAME=${DB_NAME},DB_MAX_POOL_SIZE=5,FRONTEND_URL=${PUBLIC_BASE_URL},MAIL_HOST=${MAIL_HOST},MAIL_PORT=${MAIL_PORT},MAIL_SMTP_AUTH=${MAIL_SMTP_AUTH},MAIL_STARTTLS=${MAIL_STARTTLS},MAIL_STARTTLS_REQUIRED=${MAIL_STARTTLS_REQUIRED},MAIL_FROM=${MAIL_FROM},OPENAI_MODEL=${OPENAI_MODEL},OPENAI_API_URL=${OPENAI_API_URL},FIREBASE_PROJECT_ID=my-skool-club-web" \
+    --set-secrets="DB_USERNAME=db-username:latest,DB_PASSWORD=db-password:latest,MAIL_USERNAME=mail-username:latest,MAIL_PASSWORD=mail-password:latest,OPENAI_API_KEY=openai-api-key:latest" \
     --no-invoker-iam-check \
     --execution-environment=gen2 \
     --port=8080 \

@@ -575,4 +575,4 @@ COMMIT;
 
 \echo 'Verified: 10 users, 1 school, 9 school memberships, 2 clubs, 9 club memberships'
 \echo 'Verified: 6 announcements, 6 events, 8 invoices, 8 inventory items'
-\echo 'Verified: 10 notifications, 3 moderation reports, all passwords hashed'
+\echo 'Verified: 10 notifications, 3 moderation reports'

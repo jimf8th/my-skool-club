@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { clearAuthSession, getAuthToken } from '../utils/authStorage';
+import { clearAuthSession } from '../utils/authStorage';
+import { currentIdToken } from './firebase';
 import environmentConfig from '../config/environments';
 
 const { REMOTE_API_URL, normalizeAppEnvironment } = environmentConfig;
@@ -89,10 +90,10 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor attaches the current Firebase ID token.
 api.interceptors.request.use(
   async (config) => {
-    const token = await getAuthToken();
+    const token = await currentIdToken().catch(() => null);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -117,40 +118,17 @@ api.interceptors.response.use(
 );
 
 export const authAPI = {
-  register: async (data) => {
-    const response = await api.post('/auth/register', data);
-    return response.data;
-  },
-  login: async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
-    return response.data;
-  },
-  verifyEmail: async (email, code) => {
-    const response = await api.post('/auth/verify-email', { email, code });
-    return response.data;
-  },
-  resendVerification: async (email) => {
-    const response = await api.post('/auth/resend-verification', { email });
-    return response.data;
-  },
-  forgotPassword: async (email) => {
-    const response = await api.post('/auth/forgot-password', { email });
-    return response.data;
-  },
-  resetPassword: async (email, code, newPassword) => {
-    const response = await api.post('/auth/reset-password', { email, code, newPassword });
+  // Creates or refreshes the local account for the signed-in Firebase user.
+  syncSession: async (consent) => {
+    const response = await api.post('/auth/session', consent || {});
     return response.data;
   },
   getInvitationDetails: async (token) => {
     const response = await api.post('/auth/invitations/details', { token });
     return response.data;
   },
-  sendInvitationCode: async (token) => {
-    const response = await api.post('/auth/invitations/send-code', { token });
-    return response.data;
-  },
-  acceptInvitation: async (data) => {
-    const response = await api.post('/auth/invitations/accept', data);
+  acceptInvitation: async (token, consent) => {
+    const response = await api.post('/auth/invitations/accept', { token, ...(consent || {}) });
     return response.data;
   },
 };
@@ -197,8 +175,8 @@ export const accountAPI = {
     const response = await api.get('/account');
     return response.data;
   },
-  deleteAccount: async (password) => {
-    await api.delete('/account', { data: { password } });
+  deleteAccount: async () => {
+    await api.delete('/account');
   },
 };
 
@@ -276,6 +254,17 @@ export const schoolsAPI = {
 export const usersAPI = {
   getAll: async () => {
     const response = await api.get('/users');
+    return response.data;
+  },
+};
+
+export const accountsAdminAPI = {
+  search: async (query) => {
+    const response = await api.get('/users/accounts', { params: query ? { query } : {} });
+    return response.data;
+  },
+  resetSignIn: async (userId) => {
+    const response = await api.post(`/users/${userId}/reset-sign-in`);
     return response.data;
   },
 };

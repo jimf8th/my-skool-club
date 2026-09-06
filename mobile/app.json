@@ -2,7 +2,7 @@
   "expo": {
     "name": "My Skool Club",
     "slug": "my-skool-club",
-    "version": "2.0.1",
+    "version": "2.2.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -101,6 +101,7 @@
       "expo-router",
       "expo-asset",
       "expo-font",
+      "expo-web-browser",
       [
         "expo-image-picker",
         {

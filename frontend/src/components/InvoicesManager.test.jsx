@@ -29,14 +29,14 @@ describe('InvoicesManager school tier', () => {
   it('disables AI receipt scanning and identifies it as Premium for Standard schools', async () => {
     await openNewInvoice('STANDARD');
 
-    expect(screen.getByRole('button', { name: '🔒 Scan Receipt · Premium' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Scan Receipt · Premium' })).toBeDisabled();
     expect(screen.getByText(/AI receipt scanning comes with Premium/)).toBeInTheDocument();
   });
 
   it('enables AI receipt scanning for Premium schools', async () => {
     await openNewInvoice('PREMIUM');
 
-    expect(screen.getByRole('button', { name: '📷 Scan Receipt · Premium' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Scan Receipt · Premium' })).toBeEnabled();
     expect(screen.queryByText(/AI receipt scanning comes with Premium/)).not.toBeInTheDocument();
   });
 });

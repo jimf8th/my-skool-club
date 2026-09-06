@@ -1,3 +1,7 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,8 +13,17 @@
 }
 
 body {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-weight: 400;
   line-height: 1.5;
   color: #213547;
   background-color: #ffffff;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-weight: 500;
 }

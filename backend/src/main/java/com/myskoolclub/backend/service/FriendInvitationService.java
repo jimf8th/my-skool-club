@@ -1,9 +1,10 @@
 package com.myskoolclub.backend.service;
 
 import com.myskoolclub.backend.dto.AcceptFriendInvitationRequest;
-import com.myskoolclub.backend.dto.AuthResponse;
 import com.myskoolclub.backend.dto.CreateFriendInvitationRequest;
 import com.myskoolclub.backend.dto.FriendInvitationDetailsResponse;
+import com.myskoolclub.backend.dto.SessionResponse;
+import com.myskoolclub.backend.dto.SessionSyncRequest;
 import com.myskoolclub.backend.exception.AppException;
 import com.myskoolclub.backend.model.FriendInvitation;
 import com.myskoolclub.backend.model.MembershipRole;
@@ -14,9 +15,9 @@ import com.myskoolclub.backend.model.User;
 import com.myskoolclub.backend.repository.FriendInvitationRepository;
 import com.myskoolclub.backend.repository.SchoolMembershipRepository;
 import com.myskoolclub.backend.repository.UserRepository;
+import com.myskoolclub.backend.security.FirebaseTokenVerifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,17 +34,15 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class FriendInvitationService {
 
-    private static final String CURRENT_TERMS_VERSION = "2026-08-08";
     private static final int MAX_INVITATIONS_PER_DAY = 20;
-    private static final int MAX_CODE_ATTEMPTS = 5;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final FriendInvitationRepository invitationRepository;
     private final SchoolMembershipRepository schoolMembershipRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final FirebaseTokenVerifier firebaseTokenVerifier;
+    private final FirebaseSessionService firebaseSessionService;
     private final EmailService emailService;
-    private final AuthService authService;
 
     @Transactional
     public void invite(CreateFriendInvitationRequest request, String inviterEmail) {
@@ -131,68 +130,44 @@ public class FriendInvitationService {
 
     @Transactional
     public void sendVerificationCode(String rawToken) {
-        FriendInvitation invitation = requireUsableInvitation(rawToken);
-        LocalDateTime now = LocalDateTime.now();
-
-        if (invitation.getVerificationCodeSentAt() != null
-                && invitation.getVerificationCodeSentAt().isAfter(now.minusMinutes(1))) {
-            throw new AppException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Please wait one minute before requesting another code.");
-        }
-
-        String code = String.format(Locale.ROOT, "%06d", SECURE_RANDOM.nextInt(1_000_000));
-        invitation.setVerificationCodeHash(passwordEncoder.encode(code));
-        invitation.setVerificationCodeExpiresAt(now.plusMinutes(15));
-        invitation.setVerificationCodeSentAt(now);
-        invitation.setVerificationAttemptCount(0);
-
-        emailService.sendFriendInvitationVerificationCode(
-                invitation.getEmail(), invitation.getFirstName(), code);
+        // Firebase Authentication now proves email ownership; the invitation
+        // no longer issues its own codes.
+        requireUsableInvitation(rawToken);
     }
 
+    /**
+     * Claims an invitation for the signed-in Firebase identity. The Firebase
+     * account email must match the invited email and be verified.
+     */
     @Transactional(noRollbackFor = AppException.class)
-    public AuthResponse accept(AcceptFriendInvitationRequest request) {
+    public SessionResponse accept(String idToken, AcceptFriendInvitationRequest request) {
+        FirebaseTokenVerifier.FirebaseIdentity identity = firebaseTokenVerifier.verify(idToken);
         FriendInvitation invitation = requireUsableInvitation(request.token(), true);
         LocalDateTime now = LocalDateTime.now();
 
-        if (invitation.getVerificationCodeHash() == null
-                || invitation.getVerificationCodeExpiresAt() == null) {
-            throw new AppException(HttpStatus.BAD_REQUEST,
-                    "Request a verification code before creating your account.");
+        if (!identity.email().equalsIgnoreCase(invitation.getEmail())) {
+            throw new AppException(HttpStatus.FORBIDDEN,
+                    "Sign in with the invited email address to accept this invitation.");
         }
-        if (invitation.getVerificationCodeExpiresAt().isBefore(now)) {
-            clearVerificationCode(invitation);
-            throw new AppException(HttpStatus.BAD_REQUEST,
-                    "Verification code expired. Request a new code.");
-        }
-        if (!passwordEncoder.matches(request.code(), invitation.getVerificationCodeHash())) {
-            invitation.setVerificationAttemptCount(invitation.getVerificationAttemptCount() + 1);
-            if (invitation.getVerificationAttemptCount() >= MAX_CODE_ATTEMPTS) {
-                clearVerificationCode(invitation);
-                throw new AppException(HttpStatus.BAD_REQUEST,
-                        "Too many incorrect attempts. Request a new code.");
-            }
-            throw new AppException(HttpStatus.BAD_REQUEST,
-                    "Invalid invitation or verification code.");
-        }
-        if (userRepository.existsByEmailIgnoreCase(invitation.getEmail())) {
-            invitation.setRevokedAt(now);
-            throw invalidInvitation();
+        if (!identity.emailVerified()) {
+            throw new AppException(HttpStatus.FORBIDDEN,
+                    "Verify your email before accepting this invitation.");
         }
 
-        User user = User.builder()
-                .email(invitation.getEmail())
-                .password(passwordEncoder.encode(request.password()))
-                .firstName(invitation.getFirstName())
-                .lastName(invitation.getLastName())
-                .emailVerified(true)
-                .ageConfirmed(Boolean.TRUE.equals(request.ageConfirmed()))
-                .termsAcceptedAt(now)
-                .termsVersion(CURRENT_TERMS_VERSION)
-                .build();
-        userRepository.saveAndFlush(user);
+        SessionResponse session = firebaseSessionService.sync(idToken, new SessionSyncRequest(
+                request.ageConfirmed(),
+                request.acceptedTerms(),
+                invitation.getFirstName(),
+                invitation.getLastName(),
+                null
+        ));
+        User user = userRepository.findByFirebaseUid(identity.uid())
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Account not found"));
 
-        if (invitation.getSchool() != null) {
+        if (invitation.getSchool() != null
+                && schoolMembershipRepository
+                        .findByUserIdAndSchoolId(user.getId(), invitation.getSchool().getId())
+                        .isEmpty()) {
             schoolMembershipRepository.save(SchoolMembership.builder()
                     .user(user)
                     .school(invitation.getSchool())
@@ -204,9 +179,8 @@ public class FriendInvitationService {
         }
 
         invitation.setAcceptedAt(now);
-        clearVerificationCode(invitation);
         revokeOpenInvitations(invitation.getEmail(), now);
-        return authService.createAuthResponse(user);
+        return session;
     }
 
     private FriendInvitation requireUsableInvitation(String rawToken) {
@@ -237,12 +211,6 @@ public class FriendInvitationService {
         invitationRepository
                 .findAllByEmailIgnoreCaseAndAcceptedAtIsNullAndRevokedAtIsNull(email)
                 .forEach(open -> open.setRevokedAt(revokedAt));
-    }
-
-    private void clearVerificationCode(FriendInvitation invitation) {
-        invitation.setVerificationCodeHash(null);
-        invitation.setVerificationCodeExpiresAt(null);
-        invitation.setVerificationAttemptCount(0);
     }
 
     private String generateToken() {

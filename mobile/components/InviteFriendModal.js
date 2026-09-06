@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Button, Surface, Text, TextInput } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from './Icon';
 import { invitationsAPI } from '../services/api';
 import { getFriendlyErrorMessage } from '../utils/errors';
 

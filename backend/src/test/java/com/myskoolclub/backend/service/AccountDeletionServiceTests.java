@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -37,9 +36,6 @@ class AccountDeletionServiceTests {
     private UserRepository userRepository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -48,7 +44,7 @@ class AccountDeletionServiceTests {
     @Test
     @WithMockUser(username = "session@example.com")
     void returnsCurrentAccountForSessionValidation() throws Exception {
-        persistUser("session@example.com", "ValidPassword1!");
+        persistUser("session@example.com");
         entityManager.flush();
 
         mockMvc.perform(get("/api/account"))
@@ -60,7 +56,7 @@ class AccountDeletionServiceTests {
 
     @Test
     void deletesPersonalDataAndAnonymizesRetainedOrganizationRecords() {
-        User user = persistUser("member@example.com", "ValidPassword1!");
+        User user = persistUser("member@example.com");
         School school = persist(School.builder()
                 .name("Deletion Test School")
                 .description("School record remains")
@@ -135,7 +131,7 @@ class AccountDeletionServiceTests {
 
         entityManager.flush();
 
-        accountDeletionService.deleteAccount(user.getEmail(), "ValidPassword1!");
+        accountDeletionService.deleteAccount(user.getEmail());
         entityManager.clear();
 
         assertThat(userRepository.findByEmail("member@example.com")).isEmpty();
@@ -170,21 +166,8 @@ class AccountDeletionServiceTests {
     }
 
     @Test
-    void rejectsDeletionWhenPasswordIsIncorrect() {
-        User user = persistUser("wrong-password@example.com", "ValidPassword1!");
-        entityManager.flush();
-
-        assertThatThrownBy(() ->
-                accountDeletionService.deleteAccount(user.getEmail(), "WrongPassword1!"))
-                .isInstanceOfSatisfying(AppException.class,
-                        ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
-
-        assertThat(userRepository.findByEmail(user.getEmail())).isPresent();
-    }
-
-    @Test
     void rejectsDeletionWhileInventoryIsCheckedOut() {
-        User user = persistUser("checkout@example.com", "ValidPassword1!");
+        User user = persistUser("checkout@example.com");
         School school = persist(School.builder()
                 .name("Checkout Test School")
                 .createdBy(user)
@@ -207,7 +190,7 @@ class AccountDeletionServiceTests {
         entityManager.flush();
 
         assertThatThrownBy(() ->
-                accountDeletionService.deleteAccount(user.getEmail(), "ValidPassword1!"))
+                accountDeletionService.deleteAccount(user.getEmail()))
                 .isInstanceOfSatisfying(AppException.class, ex -> {
                     assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(ex.getMessage()).contains("checked-out inventory");
@@ -216,10 +199,10 @@ class AccountDeletionServiceTests {
         assertThat(userRepository.findByEmail(user.getEmail())).isPresent();
     }
 
-    private User persistUser(String email, String rawPassword) {
+    private User persistUser(String email) {
         return persist(User.builder()
                 .email(email)
-                .password(passwordEncoder.encode(rawPassword))
+                .firebaseUid(null)
                 .firstName("Test")
                 .lastName("Member")
                 .appRole(AppRole.APP_USER)

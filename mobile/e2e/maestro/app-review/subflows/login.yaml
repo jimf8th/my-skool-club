@@ -13,6 +13,11 @@ appId: ${APP_ID}
             visible: "Continue"
         commands:
             - tapOn: "Continue"
+- runFlow:
+        when:
+            visible: "Go home"
+        commands:
+            - tapOn: "Close"
 - extendedWaitUntil:
     visible: "Sign In"
     timeout: 20000

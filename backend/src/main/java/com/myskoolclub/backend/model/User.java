@@ -23,8 +23,15 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    // Null for accounts created through Google sign-in.
+    @Column
     private String password;
+
+    @Column(name = "firebase_uid", unique = true, length = 128)
+    private String firebaseUid;
+
+    @Column(name = "google_sub", unique = true)
+    private String googleSub;
 
     @Column(name = "first_name", nullable = false)
     private String firstName;

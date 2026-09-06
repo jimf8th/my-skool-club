@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { currentIdToken } from './firebase';
 
 // Use relative URL so requests go to whatever port the app is served from.
 // In production and when served via Spring Boot on :8080 this resolves correctly.
@@ -15,7 +16,6 @@ const api = axios.create({
 let onUnauthorized = null;
 
 function clearStoredSession() {
-  localStorage.removeItem('authToken');
   localStorage.removeItem('authUser');
 }
 
@@ -23,10 +23,10 @@ export function setOnUnauthorized(handler) {
   onUnauthorized = handler;
 }
 
-// Request interceptor to add auth token
+// Request interceptor attaches the current Firebase ID token.
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
+  async (config) => {
+    const token = await currentIdToken().catch(() => null);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -42,7 +42,7 @@ api.interceptors.response.use(
     const unauthorized = error.response?.status === 401;
     const isPublicAuthRequest = error.config?.url?.startsWith('/auth/');
 
-    if (unauthorized && !isPublicAuthRequest && localStorage.getItem('authToken')) {
+    if (unauthorized && !isPublicAuthRequest && localStorage.getItem('authUser')) {
       clearStoredSession();
       onUnauthorized?.();
     }
@@ -55,8 +55,8 @@ export const accountService = {
     const response = await api.get('/account');
     return response.data;
   },
-  deleteAccount: async (password) => {
-    await api.delete('/account', { data: { password } });
+  deleteAccount: async () => {
+    await api.delete('/account');
   },
 };
 
@@ -87,35 +87,10 @@ export const schoolRequestsService = {
 };
 
 export const authService = {
-  register: async (data) => {
-    const response = await api.post('/auth/register', data);
-    return response.data;
-  },
-
-  login: async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
-    authService.storeSession(response.data);
-    return response.data;
-  },
-
-  verifyEmail: async (email, code) => {
-    const response = await api.post('/auth/verify-email', { email, code });
-    authService.storeSession(response.data);
-    return response.data;
-  },
-
-  resendVerification: async (email) => {
-    const response = await api.post('/auth/resend-verification', { email });
-    return response.data;
-  },
-
-  forgotPassword: async (email) => {
-    const response = await api.post('/auth/forgot-password', { email });
-    return response.data;
-  },
-
-  resetPassword: async (email, code, newPassword) => {
-    const response = await api.post('/auth/reset-password', { email, code, newPassword });
+  // Creates or refreshes the local account for the signed-in Firebase user.
+  syncSession: async (consent) => {
+    const response = await api.post('/auth/session', consent || {});
+    authService.updateStoredUser(response.data);
     return response.data;
   },
 
@@ -124,29 +99,14 @@ export const authService = {
     return response.data;
   },
 
-  sendInvitationCode: async (token) => {
-    const response = await api.post('/auth/invitations/send-code', { token });
+  acceptInvitation: async (token, consent) => {
+    const response = await api.post('/auth/invitations/accept', { token, ...(consent || {}) });
+    authService.updateStoredUser(response.data);
     return response.data;
-  },
-
-  acceptInvitation: async (data) => {
-    const response = await api.post('/auth/invitations/accept', data);
-    authService.storeSession(response.data);
-    return response.data;
-  },
-
-  storeSession: (authResponse) => {
-    const { token, ...userInfo } = authResponse;
-    localStorage.setItem('authToken', token);
-    localStorage.setItem('authUser', JSON.stringify(userInfo));
   },
 
   logout: () => {
     clearStoredSession();
-  },
-
-  isAuthenticated: () => {
-    return !!localStorage.getItem('authToken');
   },
 
   getUser: () => {
@@ -434,6 +394,17 @@ export const moderationService = {
   },
   restoreUser: async (userId) => {
     const response = await api.post(`/content-reports/moderation/users/${userId}/restore`);
+    return response.data;
+  },
+};
+
+export const accountsAdminService = {
+  search: async (query) => {
+    const response = await api.get('/users/accounts', { params: query ? { query } : {} });
+    return response.data;
+  },
+  resetSignIn: async (userId) => {
+    const response = await api.post(`/users/${userId}/reset-sign-in`);
     return response.data;
   },
 };

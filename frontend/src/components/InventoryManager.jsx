@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import Modal from './Modal';
 import { inventoryService } from '../services/api';
 import { getErrorMessage } from '../utils/errors';
@@ -92,7 +93,7 @@ function CheckoutForm({ clubId, itemId, onCancel, onSaved }) {
   return <form onSubmit={submit} className="space-y-4"><Back onClick={onCancel} /><label className="flex items-center gap-2"><input type="checkbox" checked={hasDueDate} onChange={(event) => setHasDueDate(event.target.checked)} /> Set a due date</label>{hasDueDate && <input type="date" min={new Date().toISOString().slice(0, 10)} value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="w-full rounded-lg border px-4 py-3" />}<textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Checkout notes (optional)" className="w-full rounded-lg border px-4 py-3" />{error && <p className="text-sm text-red-700">{error}</p>}<div className="flex justify-end gap-3"><button type="button" onClick={onCancel} className="px-4 py-2 font-semibold">Cancel</button><button disabled={saving} className="rounded-lg bg-pink-600 px-5 py-2.5 font-semibold text-white">{saving ? 'Checking out…' : 'Check Out'}</button></div></form>;
 }
 
-function Back({ onClick }) { return <button type="button" onClick={onClick} className="text-sm font-semibold text-pink-700">← Back</button>; }
+function Back({ onClick }) { return <button type="button" onClick={onClick} className="inline-flex items-center gap-1 text-sm font-medium text-pink-700"><ArrowLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> Back</button>; }
 function Loading() { return <p className="py-10 text-center text-gray-500">Loading…</p>; }
 function Empty() { return <p className="rounded-xl bg-gray-50 p-10 text-center text-gray-500">No inventory items yet.</p>; }
 function Status({ value }) { const colors = { CHECKED_IN: 'bg-green-100 text-green-700', CHECKED_OUT: 'bg-amber-100 text-amber-700', OVERDUE: 'bg-red-100 text-red-700' }; return <span className={`rounded-full px-2 py-1 text-xs font-bold ${colors[value] || colors.CHECKED_IN}`}>{value.replace('_', ' ')}</span>; }

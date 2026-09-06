@@ -1,189 +1,288 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { accountAPI, authAPI, setOnUnauthorized } from '../services/api';
-import { clearAuthSession, getAuthToken, getCachedUser, setAuthSession, setCachedUser } from '../utils/authStorage';
+import { clearAuthSession, getCachedUser, setCachedUser } from '../utils/authStorage';
+import {
+  firebaseAuth,
+  GoogleAuthProvider,
+  OAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithCredential,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+} from '../services/firebase';
 import { getFriendlyErrorMessage } from '../utils/errors';
 
 const AuthContext = createContext(null);
 
+// iOS client ID from Google Cloud Console.
+const GOOGLE_IOS_CLIENT_ID = '1020171079797-d0opi02bv54l0fqjp8lab396sch1h6g2.apps.googleusercontent.com';
+
+GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+
+const FIREBASE_ERROR_MESSAGES = {
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/user-not-found': 'Incorrect email or password.',
+  'auth/wrong-password': 'Incorrect email or password.',
+  'auth/too-many-requests': 'Too many attempts. Try again in a few minutes.',
+  'auth/email-already-in-use': 'Email already in use.',
+  'auth/weak-password': 'Please choose a stronger password.',
+  'auth/network-request-failed': 'Network error. Check your connection and try again.',
+};
+
+function friendlyError(error, fallback) {
+  return FIREBASE_ERROR_MESSAGES[error?.code]
+    || getFriendlyErrorMessage(error, fallback);
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(null);
 
   useEffect(() => {
-    // Register the 401 handler before validating the stored session so an
-    // expired token clears both persistent and in-memory authentication.
+    let active = true;
+
     setOnUnauthorized(() => {
-      setToken(null);
-      setUser(null);
+      if (active) setUser(null);
     });
 
-    checkAuth();
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        await clearAuthSession().catch(() => {});
+        if (active) {
+          setUser(null);
+          setLoading(false);
+        }
+        return;
+      }
+      try {
+        const profile = await authAPI.syncSession();
+        await setCachedUser(profile);
+        if (active) setUser(profile.emailVerified ? profile : null);
+      } catch (error) {
+        // 428 = Firebase identity without an app account; explicit sign-in
+        // flows collect consent. A network failure keeps the cached session
+        // usable during a temporary outage.
+        const cached = await getCachedUser().catch(() => null);
+        if (!error.response && cached && active) {
+          setUser(cached);
+        } else if (active) {
+          setUser(null);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    });
 
-    return () => setOnUnauthorized(null);
+    return () => {
+      active = false;
+      unsubscribe();
+      setOnUnauthorized(null);
+    };
   }, []);
 
-  const checkAuth = async () => {
+  const establishSession = async (consent) => {
     try {
-      const storedToken = await getAuthToken();
-      const storedUser = await getCachedUser();
-      if (!storedToken) return;
-
-      try {
-        // Do not mount authenticated tabs based solely on cached credentials.
-        // This catches expired tokens, server secret rotations, disabled users,
-        // and accounts deleted from another device.
-        const currentUser = await accountAPI.getCurrentAccount();
-        await setCachedUser(currentUser);
-        setToken(storedToken);
-        setUser(currentUser);
-      } catch (error) {
-        if (error.response?.status === 401) {
-          return;
-        }
-
-        // Preserve an existing session during a temporary network outage. API
-        // requests can retry when connectivity returns.
-        if (storedUser) {
-          setToken(storedToken);
-          setUser(storedUser);
-        }
+      const profile = await authAPI.syncSession(consent);
+      if (!profile.emailVerified) {
+        return { success: false, verificationRequired: true };
       }
+      await setCachedUser(profile);
+      setUser(profile);
+      return { success: true };
     } catch (error) {
-      // Leave the user signed out. Avoid sending storage internals to the
-      // React Native error overlay.
-    } finally {
-      setLoading(false);
+      return {
+        success: false,
+        consentRequired: error.response?.status === 428,
+        error: friendlyError(error, 'Sign-in failed. Please try again.'),
+      };
     }
   };
 
   const login = async (email, password) => {
     try {
-      const response = await authAPI.login(email, password);
-      const { token, ...userInfo } = response;
-      await setAuthSession(token, userInfo);
-      setToken(token);
-      setUser(userInfo);
-      return { success: true };
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      if (!credential.user.emailVerified) {
+        await sendEmailVerification(credential.user).catch(() => {});
+        return { success: false, verificationRequired: true };
+      }
+      return await establishSession();
     } catch (error) {
-      return {
-        success: false,
-        error: getFriendlyErrorMessage(error, 'Login failed. Please try again.'),
-        status: error.response?.status,
-        verificationRequired: error.response?.status === 403,
-      };
+      return { success: false, error: friendlyError(error, 'Login failed. Please try again.') };
     }
   };
+
+  const loginWithGoogleIdToken = async (idToken) => {
+    try {
+      await signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(idToken));
+      return await establishSession();
+    } catch (error) {
+      return { success: false, error: friendlyError(error, 'Google sign-in failed. Please try again.') };
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => {});
+      const { data } = await GoogleSignin.signIn();
+      return await loginWithGoogleIdToken(data.idToken);
+    } catch (error) {
+      if (error?.code === 12 /* SIGN_IN_CANCELLED */) {
+        return { success: false, error: 'Sign-in was cancelled.' };
+      }
+      return { success: false, error: friendlyError(error, 'Google sign-in failed. Please try again.') };
+    }
+  };
+
+  const loginWithApple = async () => {
+    try {
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+      const appleCredential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      const provider = new OAuthProvider('apple.com');
+      await signInWithCredential(firebaseAuth, provider.credential({
+        idToken: appleCredential.identityToken,
+        rawNonce,
+      }));
+      return await establishSession();
+    } catch (error) {
+      if (error?.code === 'ERR_REQUEST_CANCELED') {
+        return { success: false, error: 'Sign-in was cancelled.' };
+      }
+      return { success: false, error: friendlyError(error, 'Apple sign-in failed. Please try again.') };
+    }
+  };
+
+  // Retries session creation with consent after a 428 response.
+  const completeConsent = () =>
+    establishSession({ ageConfirmed: true, acceptedTerms: true });
 
   const register = async (userData) => {
     try {
-      const response = await authAPI.register(userData);
-      if (!response.verificationRequired) {
-        const authResponse = await authAPI.login(userData.email, userData.password);
-        const { token: registeredToken, ...userInfo } = authResponse;
-        await setAuthSession(registeredToken, userInfo);
-        setToken(registeredToken);
-        setUser(userInfo);
+      const credential = await createUserWithEmailAndPassword(
+        firebaseAuth, userData.email, userData.password);
+      await updateProfile(credential.user, {
+        displayName: `${userData.firstName} ${userData.lastName}`.trim(),
+      }).catch(() => {});
+      // Record consent and profile before verification completes.
+      await authAPI.syncSession({
+        ageConfirmed: userData.ageConfirmed,
+        acceptedTerms: userData.acceptedTerms,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        graduationYear: userData.graduationYear,
+      });
+      await sendEmailVerification(credential.user).catch(() => {});
+      return { success: true, email: userData.email, verificationRequired: true };
+    } catch (error) {
+      return { success: false, error: friendlyError(error, 'Registration failed. Please try again.') };
+    }
+  };
+
+  // Called from the verification screen after the user opens the email link.
+  const checkEmailVerified = async () => {
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) {
+      return { success: false, error: 'Sign in first, then verify your email.' };
+    }
+    await firebaseUser.reload();
+    if (!firebaseUser.emailVerified) {
+      return { success: false, error: 'This email is not verified yet. Use the link we sent you.' };
+    }
+    await firebaseUser.getIdToken(true);
+    return establishSession();
+  };
+
+  const resendVerification = async () => {
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) {
+      return { success: false, error: 'Sign in first to request a new link.' };
+    }
+    try {
+      await sendEmailVerification(firebaseUser);
+      return { success: true, message: 'Verification link sent. Check your inbox.' };
+    } catch (error) {
+      return { success: false, error: friendlyError(error, 'Could not send the link. Try again shortly.') };
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email);
+      return { success: true, message: 'If an eligible account exists, a password reset link has been sent.' };
+    } catch (error) {
+      // Do not reveal whether the account exists.
+      if (error?.code === 'auth/user-not-found') {
+        return { success: true, message: 'If an eligible account exists, a password reset link has been sent.' };
       }
-      return {
-        success: true,
-        email: response.email,
-        verificationRequired: response.verificationRequired,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: getFriendlyErrorMessage(error, 'Registration failed. Please try again.')
-      };
+      return { success: false, error: friendlyError(error, 'Could not send the reset link.') };
     }
   };
 
-  const verifyEmail = async (email, code) => {
+  const acceptInvitation = async (token) => {
     try {
-      const response = await authAPI.verifyEmail(email, code);
-      const { token: verifiedToken, ...userInfo } = response;
-      await setAuthSession(verifiedToken, userInfo);
-      setToken(verifiedToken);
-      setUser(userInfo);
+      const profile = await authAPI.acceptInvitation(
+        token, { ageConfirmed: true, acceptedTerms: true });
+      await setCachedUser(profile);
+      setUser(profile);
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        error: getFriendlyErrorMessage(error, 'Verification failed. Please try again.'),
-      };
-    }
-  };
-
-  const resendVerification = async (email) => {
-    try {
-      const response = await authAPI.resendVerification(email);
-      return { success: true, message: response.message };
-    } catch (error) {
-      return {
-        success: false,
-        error: getFriendlyErrorMessage(error, 'Could not resend the code. Please try again.'),
-      };
-    }
-  };
-
-  const acceptInvitation = async (invitationData) => {
-    try {
-      const response = await authAPI.acceptInvitation(invitationData);
-      const { token: invitationToken, ...userInfo } = response;
-      await setAuthSession(invitationToken, userInfo);
-      setToken(invitationToken);
-      setUser(userInfo);
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: getFriendlyErrorMessage(error, 'Could not create your account. Please try again.'),
+        error: friendlyError(error, 'Could not accept the invitation.'),
       };
     }
   };
 
   const logout = async () => {
     try {
-      await clearAuthSession();
-      setToken(null);
-      setUser(null);
+      await signOut(firebaseAuth);
     } catch (error) {
       // Keep the failure out of the in-app error overlay.
     }
+    await clearAuthSession().catch(() => {});
+    setUser(null);
   };
 
-  const deleteAccount = async (password) => {
+  const deleteAccount = async () => {
     try {
-      await accountAPI.deleteAccount(password);
+      await accountAPI.deleteAccount();
     } catch (error) {
       return {
         success: false,
-        error: getFriendlyErrorMessage(error, 'Could not delete your account. Please try again.'),
+        error: friendlyError(error, 'Could not delete your account. Please try again.'),
       };
     }
-
-    try {
-      await clearAuthSession();
-    } catch (error) {
-      // The server has already deleted the account, so always clear in-memory
-      // authentication even if local storage cleanup unexpectedly fails.
-    } finally {
-      setToken(null);
-      setUser(null);
-    }
-
+    await logout();
     return { success: true };
   };
 
   const value = {
     user,
-    token,
     loading,
-    isAuthenticated: !!token,
+    isAuthenticated: !!user,
     login,
+    loginWithGoogle,
+    loginWithGoogleIdToken,
+    loginWithApple,
+    completeConsent,
     register,
-    verifyEmail,
+    checkEmailVerified,
     resendVerification,
+    forgotPassword,
     acceptInvitation,
     logout,
     deleteAccount,

@@ -30,56 +30,6 @@ public class EmailService {
     @Value("${app.mobile-scheme:myskoolclub}")
     private String mobileScheme;
 
-    public void sendVerificationEmail(String toEmail, String code) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(toEmail);
-        message.setSubject("Verify your My Skool Club account");
-        message.setText(
-                "Hi,\n\n" +
-                "Your My Skool Club verification code is:\n\n" +
-                code + "\n\n" +
-                "Enter this code at " + frontendUrl + "/verify-email.\n\n" +
-                "This code expires in 15 minutes.\n\n" +
-                "If you did not create an account, please ignore this email.\n\n" +
-                "My Skool Club"
-        );
-
-        try {
-            mailSender.send(message);
-            log.info("Verification email sent to {}", toEmail);
-        } catch (Exception e) {
-            log.error("Failed to send verification email to {}: {}", toEmail, e.getMessage());
-            throw new AppException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "We could not send the verification email. Please try again."
-            );
-        }
-    }
-
-    public void sendPasswordResetEmail(String toEmail, String code) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(toEmail);
-        message.setSubject("Reset your My Skool Club password");
-        message.setText(
-                "Hi,\n\n" +
-                "Your My Skool Club password reset code is:\n\n" +
-                code + "\n\n" +
-                "Enter this code at " + frontendUrl + "/reset-password.\n\n" +
-                "This code expires in 15 minutes. If you did not request a reset, ignore this email.\n\n" +
-                "My Skool Club"
-        );
-        try {
-            mailSender.send(message);
-            log.info("Password reset email sent to {}", toEmail);
-        } catch (Exception e) {
-            log.error("Failed to send password reset email to {}: {}", toEmail, e.getMessage());
-            throw new AppException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "We could not send the password reset email. Please try again.");
-        }
-    }
-
     public void sendFriendInvitationEmail(
             String toEmail, String firstName, String inviterName, String token) {
         String invitationUrl = frontendUrl.replaceAll("/+$", "")
@@ -98,29 +48,12 @@ public class EmailService {
                 invitationUrl + "\n\n" +
                 "If My Skool Club is installed, you can open it directly:\n" +
                 mobileUrl + "\n\n" +
-                "The link expires in 48 hours. After opening it, we will send a separate " +
-                "verification code to this email address before a password can be created.\n\n" +
+                "The link expires in 48 hours. You will sign in with your email address " +
+                "or Google/Apple account to accept the invitation.\n\n" +
                 "If you were not expecting this invitation, you can safely ignore it.\n\n" +
                 "My Skool Club"
         );
         send(message, "friend invitation", toEmail);
-    }
-
-    public void sendFriendInvitationVerificationCode(String toEmail, String firstName, String code) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(toEmail);
-        message.setSubject("Your My Skool Club invitation verification code");
-        message.setText(
-                "Hi " + firstName + ",\n\n" +
-                "Your invitation verification code is:\n\n" +
-                code + "\n\n" +
-                "Enter it on the invitation setup screen. This code expires in 15 minutes. " +
-                "Do not share this code with anyone.\n\n" +
-                "If you did not request this code, you can ignore this email.\n\n" +
-                "My Skool Club"
-        );
-        send(message, "invitation verification code", toEmail);
     }
 
     public void sendSchoolRequestSubmitted(SchoolOnboardingRequest request) {

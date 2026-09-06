@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '../../components/Icon';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAuth } from '../../context/AuthContext';
 
 function HomeHeaderTitle() {
   return (
@@ -16,6 +18,19 @@ function HomeHeaderTitle() {
 }
 
 export default function TabsLayout() {
+  const { logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/login');
+  };
+
+  const logoutButton = (
+    <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} accessibilityLabel="Log out">
+      <MaterialCommunityIcons name="logout" size={22} color="#dc2626" />
+    </TouchableOpacity>
+  );
   return (
     <Tabs
       screenOptions={{
@@ -73,9 +88,11 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account" size={size} color={color} />
           ),
+          headerRight: () => logoutButton,
         }}
       />
       <Tabs.Screen name="school-requests" options={{ href: null, title: 'School Requests' }} />
+      <Tabs.Screen name="accounts" options={{ href: null, title: 'Accounts' }} />
     </Tabs>
   );
 }
@@ -94,5 +111,9 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     fontSize: 20,
     fontWeight: '700',
+  },
+  logoutBtn: {
+    marginRight: 12,
+    padding: 6,
   },
 });

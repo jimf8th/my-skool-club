@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UserPlus } from 'lucide-react';
 import Modal from './Modal';
 import { invitationsService } from '../services/api';
 import { getErrorMessage } from '../utils/errors';
@@ -49,8 +50,8 @@ export default function InviteFriendModal({ onClose }) {
   return (
     <Modal title="Invite a Friend" onClose={() => !submitting && onClose()} size="max-w-lg">
       <div className="mb-5 text-center">
-        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-2xl" aria-hidden="true">
-          👤+
+        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100" aria-hidden="true">
+          <UserPlus className="h-6 w-6 text-blue-600" strokeWidth={2} />
         </div>
         <p className="text-sm leading-6 text-gray-600">
           We’ll email your friend a secure, 48-hour link to create their account.

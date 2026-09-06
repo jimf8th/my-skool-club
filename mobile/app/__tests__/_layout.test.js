@@ -12,6 +12,7 @@ jest.mock('react-native-paper', () => ({
   MD3DarkTheme: { colors: {} },
   MD3LightTheme: { colors: {} },
   PaperProvider: ({ children }) => children,
+  configureFonts: (config) => config,
 }));
 jest.mock('../../context/AuthContext', () => ({
   AuthProvider: ({ children }) => children,

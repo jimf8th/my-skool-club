@@ -4,19 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getInvitationDetails: vi.fn(),
-  sendInvitationCode: vi.fn(),
   acceptInvitation: vi.fn(),
   navigate: vi.fn(),
+  auth: { current: null },
 }));
 
 vi.mock('../services/api', () => ({
   authService: {
     getInvitationDetails: mocks.getInvitationDetails,
-    sendInvitationCode: mocks.sendInvitationCode,
   },
 }));
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ acceptInvitation: mocks.acceptInvitation }),
+  useAuth: () => mocks.auth.current,
 }));
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
@@ -34,34 +33,38 @@ describe('AcceptInvite', () => {
       lastName: 'Member',
       maskedEmail: 'm***@example.com',
     });
-    mocks.sendInvitationCode.mockResolvedValue({
-      message: 'A six-digit verification code was sent to the invited email.',
-    });
     mocks.acceptInvitation.mockResolvedValue({ success: true });
   });
 
-  it('requires the separately emailed code and creates the invited account', async () => {
+  it('sends a signed-out visitor to create an account first', async () => {
+    mocks.auth.current = {
+      acceptInvitation: mocks.acceptInvitation,
+      isAuthenticated: false,
+      loading: false,
+      user: null,
+    };
     render(<AcceptInvite />);
 
     expect(await screen.findByText(/Welcome, Maya Member/)).toBeInTheDocument();
     expect(mocks.getInvitationDetails).toHaveBeenCalledWith('secure-invitation-token');
+    expect(screen.getByRole('link', { name: /Create account/i })).toBeInTheDocument();
+    expect(mocks.acceptInvitation).not.toHaveBeenCalled();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /Email my verification code/i }));
-    expect(await screen.findByText(/six-digit verification code was sent/i)).toBeInTheDocument();
+  it('lets the signed-in invited member consent and accept', async () => {
+    mocks.auth.current = {
+      acceptInvitation: mocks.acceptInvitation,
+      isAuthenticated: true,
+      loading: false,
+      user: { email: 'maya@example.com' },
+    };
+    render(<AcceptInvite />);
 
-    fireEvent.change(screen.getByLabelText('Six-digit code'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'StrongPassword1!' } });
-    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'StrongPassword1!' } });
+    expect(await screen.findByText(/Welcome, Maya Member/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    fireEvent.click(screen.getByRole('button', { name: /Accept invitation/i }));
 
-    await waitFor(() => expect(mocks.acceptInvitation).toHaveBeenCalledWith({
-      token: 'secure-invitation-token',
-      code: '123456',
-      password: 'StrongPassword1!',
-      ageConfirmed: true,
-      acceptedTerms: true,
-    }));
+    await waitFor(() => expect(mocks.acceptInvitation).toHaveBeenCalledWith('secure-invitation-token'));
     expect(mocks.navigate).toHaveBeenCalledWith('/', { replace: true });
   });
 });

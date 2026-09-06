@@ -1,7 +1,6 @@
 # Application tables required by the current backend.
 # Flyway creates these in PostgreSQL's public schema.
 users
-email_verifications
 schools
 school_memberships
 clubs
@@ -16,6 +15,5 @@ announcements
 inventory_items
 inventory_checkouts
 content_reports
-password_reset_codes
 friend_invitations
 school_requests

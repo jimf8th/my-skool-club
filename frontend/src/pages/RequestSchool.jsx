@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { schoolRequestsService } from '../services/api';
 import { getErrorMessage } from '../utils/errors';
 
@@ -31,8 +32,8 @@ export default function RequestSchool() {
 
   if (submitted) return <PublicShell>
     <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
-      <div className="text-4xl">✓</div>
-      <h1 className="mt-3 text-2xl font-black text-green-900">Request submitted</h1>
+      <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" strokeWidth={2} aria-hidden="true" />
+      <h1 className="mt-3 text-2xl font-bold text-green-900">Request submitted</h1>
       <p className="mt-3 text-green-800">An application administrator must review and approve your request before the school is created and becomes active. We will email {form.adminEmail} after a decision.</p>
       <Link to="/" className="mt-6 inline-flex rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white">Return home</Link>
     </div>
@@ -41,7 +42,7 @@ export default function RequestSchool() {
   return <PublicShell>
     <div className="mb-8">
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-600">School onboarding</p>
-      <h1 className="mt-2 text-3xl font-black text-gray-900">Request your school</h1>
+      <h1 className="mt-2 text-3xl font-bold text-gray-900">Request your school</h1>
       <p className="mt-3 text-gray-600">Submit the administrator and school information below. An application administrator must approve the request before the school is created or becomes active.</p>
     </div>
     <form onSubmit={submit} className="space-y-8">
@@ -64,7 +65,7 @@ export default function RequestSchool() {
         <Field label="School website" name="website" value={form.website} onChange={change} type="url" placeholder="https://school.example" className="sm:col-span-2" />
       </fieldset>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      <div className="flex flex-wrap items-center justify-between gap-3"><Link to="/" className="font-semibold text-gray-600">← Cancel</Link><button disabled={saving} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-50">{saving ? 'Submitting…' : 'Submit for approval'}</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><Link to="/" className="inline-flex items-center gap-1 font-medium text-gray-600"><ArrowLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> Cancel</Link><button disabled={saving} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-50">{saving ? 'Submitting…' : 'Submit for approval'}</button></div>
     </form>
   </PublicShell>;
 }

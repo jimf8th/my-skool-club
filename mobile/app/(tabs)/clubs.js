@@ -5,7 +5,7 @@ import {
   FlatList, Alert,
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import { schoolsAPI, clubsAPI, invoicesAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useMySchool } from '../../hooks/useMySchool';

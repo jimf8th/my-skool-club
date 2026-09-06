@@ -113,14 +113,13 @@ describe('ProfileScreen', () => {
     expect(mockRouter.replace).toHaveBeenCalledWith('/login');
   });
 
-  it('requires both a password and exact DELETE confirmation', () => {
+  it('requires exact DELETE confirmation before enabling the delete button', () => {
     renderWithProviders(<ProfileScreen />);
     fireEvent.press(screen.getByLabelText('Delete account'));
 
     const deleteButton = screen.getByLabelText('Confirm account deletion');
     expect(deleteButton).toBeDisabled();
 
-    fireEvent.changeText(screen.getByLabelText('Current password'), 'Password1!');
     fireEvent.changeText(screen.getByLabelText('Type "DELETE" to confirm'), 'delete');
     expect(screen.getByLabelText('Confirm account deletion')).toBeDisabled();
 
@@ -132,12 +131,11 @@ describe('ProfileScreen', () => {
     deleteAccount.mockResolvedValue({ success: true });
     renderWithProviders(<ProfileScreen />);
     fireEvent.press(screen.getByLabelText('Delete account'));
-    fireEvent.changeText(screen.getByLabelText('Current password'), 'Password1!');
     fireEvent.changeText(screen.getByLabelText('Type "DELETE" to confirm'), 'DELETE');
 
     fireEvent.press(screen.getByLabelText('Confirm account deletion'));
 
-    await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith('Password1!'));
+    await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith());
     expect(mockRouter.replace).toHaveBeenCalledWith('/login');
     expect(screen.queryByText('Delete your account?')).not.toBeOnTheScreen();
   });
@@ -146,7 +144,6 @@ describe('ProfileScreen', () => {
     deleteAccount.mockResolvedValue({ success: false, error: 'Inventory must be returned' });
     renderWithProviders(<ProfileScreen />);
     fireEvent.press(screen.getByLabelText('Delete account'));
-    fireEvent.changeText(screen.getByLabelText('Current password'), 'Password1!');
     fireEvent.changeText(screen.getByLabelText('Type "DELETE" to confirm'), 'DELETE');
     fireEvent.press(screen.getByLabelText('Confirm account deletion'));
 
@@ -154,16 +151,14 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('Delete your account?')).toBeOnTheScreen();
   });
 
-  it('clears sensitive values when deletion is cancelled', () => {
+  it('clears the confirmation when deletion is cancelled', () => {
     renderWithProviders(<ProfileScreen />);
     fireEvent.press(screen.getByLabelText('Delete account'));
-    fireEvent.changeText(screen.getByLabelText('Current password'), 'Password1!');
     fireEvent.changeText(screen.getByLabelText('Type "DELETE" to confirm'), 'DELETE');
 
     fireEvent.press(screen.getByText('Cancel'));
     fireEvent.press(screen.getByLabelText('Delete account'));
 
-    expect(screen.getByLabelText('Current password').props.value).toBe('');
     expect(screen.getByLabelText('Type "DELETE" to confirm').props.value).toBe('');
   });
 });

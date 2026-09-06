@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, View, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from './Icon';
 import { contentReportsAPI } from '../services/api';
 import { getFriendlyErrorMessage } from '../utils/errors';
 

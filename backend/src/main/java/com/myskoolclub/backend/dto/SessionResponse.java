@@ -1,7 +1,6 @@
 package com.myskoolclub.backend.dto;
 
-public record AuthResponse(
-        String token,
+public record SessionResponse(
         Long id,
         String email,
         String firstName,

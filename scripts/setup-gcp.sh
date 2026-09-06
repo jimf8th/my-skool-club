@@ -239,20 +239,6 @@ else
     DB_PASSWORD_CREATED=true
 fi
 
-if secret_has_enabled_version "jwt-secret"; then
-    warn "Secret 'jwt-secret' already has an enabled version — skipping."
-else
-    JWT_SECRET_VALUE="${JWT_SECRET:-}"
-    if [[ -z "$JWT_SECRET_VALUE" ]]; then
-        require_interactive_secret "JWT secret"
-        read -r -s -p "  Enter JWT secret (min 32 chars): " JWT_SECRET_VALUE
-        echo ""
-    fi
-    [[ ${#JWT_SECRET_VALUE} -ge 32 ]] || err "JWT secret must be at least 32 characters."
-    store_missing_secret "jwt-secret" "$JWT_SECRET_VALUE"
-    unset JWT_SECRET_VALUE
-fi
-
 if secret_has_enabled_version "mail-username"; then
     warn "Secret 'mail-username' already has an enabled version — skipping."
 else

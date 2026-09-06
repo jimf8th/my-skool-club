@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Users, Calendar, BarChart3 } from 'lucide-react';
 
 const features = [
-  ['👥', 'Find your people', 'Join your school, discover clubs, and turn shared interests into a real community.'],
-  ['📅', 'Never miss a moment', 'See announcements, explore upcoming events, and RSVP while plans are still fresh.'],
-  ['📊', 'Run clubs with clarity', 'Manage members, invoices, receipts, and inventory with permission-based tools.'],
+  [Users, 'Find your people', 'Join your school, discover clubs, and turn shared interests into a real community.'],
+  [Calendar, 'Never miss a moment', 'See announcements, explore upcoming events, and RSVP while plans are still fresh.'],
+  [BarChart3, 'Run clubs with clarity', 'Manage members, invoices, receipts, and inventory with permission-based tools.'],
 ];
 
 export default function PublicHome() {
@@ -26,7 +27,7 @@ export default function PublicHome() {
           <div className="grid items-center gap-10 py-16 lg:grid-cols-2 lg:py-24">
             <div>
               <p className="mb-4 text-xs font-bold tracking-[0.25em] text-blue-200">YOUR SCHOOL, IN SYNC</p>
-              <h1 className="text-4xl font-black leading-tight sm:text-6xl">School life,<br />beautifully organized.</h1>
+              <h1 className="text-4xl font-bold leading-tight sm:text-6xl">School life,<br />beautifully organized.</h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-indigo-100">One welcoming place for the people, clubs, events, and everyday details that make a school community feel alive.</p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link to="/register" className="rounded-xl bg-white px-6 py-3 font-bold text-indigo-900 shadow-lg">Get Started</Link>
@@ -55,15 +56,15 @@ export default function PublicHome() {
       <main className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-bold tracking-[0.2em] text-indigo-600">MORE THAN A NOTICEBOARD</p>
-          <h2 className="mt-3 text-3xl font-black sm:text-4xl">A calmer way to stay connected.</h2>
+          <h2 className="mt-3 text-3xl font-bold sm:text-4xl">A calmer way to stay connected.</h2>
           <p className="mt-4 leading-7 text-slate-600">Everything your community needs is easy to find and simple to manage, so everyone can spend less time chasing updates and more time participating.</p>
         </div>
 
         <div className="mt-12 grid gap-5 md:grid-cols-3">
-          {features.map(([icon, title, body], index) => (
+          {features.map(([Icon, title, body], index) => (
             <article key={title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between"><span className="text-3xl">{icon}</span><span className="text-xs font-black text-slate-300">0{index + 1}</span></div>
-              <h3 className="mt-5 text-lg font-bold">{title}</h3>
+              <div className="flex items-center justify-between"><Icon className="h-7 w-7 text-indigo-600" strokeWidth={2} aria-hidden="true" /><span className="text-xs font-bold text-slate-300">0{index + 1}</span></div>
+              <h3 className="mt-5 text-lg font-semibold">{title}</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
             </article>
           ))}
@@ -71,12 +72,12 @@ export default function PublicHome() {
 
         <section className="mt-12 rounded-3xl bg-indigo-950 p-8 text-white sm:p-12">
           <p className="text-xs font-bold tracking-[0.2em] text-indigo-300">ONE COMMUNITY. EVERY ROLE.</p>
-          <h2 className="mt-3 text-3xl font-black">Simple for members. Powerful for organizers.</h2>
+          <h2 className="mt-3 text-3xl font-bold">Simple for members. Powerful for organizers.</h2>
           <p className="mt-4 max-w-3xl leading-7 text-indigo-100">Members see what matters to them. School and club leaders get role-aware tools for memberships, events, accounting, and assets.</p>
         </section>
 
         <section className="mt-12 text-center">
-          <h2 className="text-3xl font-black">Your community is waiting.</h2>
+          <h2 className="text-3xl font-bold">Your community is waiting.</h2>
           <p className="mt-3 text-slate-600">Create an account, find your school, and discover where you belong.</p>
           <Link to="/register" className="mt-6 inline-flex rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow">Create Account</Link>
         </section>

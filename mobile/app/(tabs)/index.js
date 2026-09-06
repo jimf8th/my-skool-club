@@ -4,7 +4,7 @@ import { Text, Surface } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { useMySchool } from '../../hooks/useMySchool';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import AnnouncementsModal from '../../components/AnnouncementsModal';
 
 export default function HomeScreen() {
@@ -22,6 +22,7 @@ function AdminHome({ user }) {
 
   const adminActions = [
     { icon: 'email-check',     label: 'School Requests', sub: 'Approve or reject onboarding requests', onPress: () => router.push('/school-requests'), color: '#0f766e', bg: '#f0fdfa' },
+    { icon: 'account-key',     label: 'Accounts',        sub: 'Search accounts and fix a stuck sign-in', onPress: () => router.push('/accounts'), color: '#be185d', bg: '#fdf2f8' },
     { icon: 'school',          label: 'Manage Schools',  sub: 'Add, edit or remove schools',       onPress: () => router.push('/schools'), color: '#2563eb', bg: '#eff6ff' },
     { icon: 'account-group',   label: 'Manage Clubs',    sub: 'Oversee clubs across schools',      onPress: () => router.push('/clubs'), color: '#7c3aed', bg: '#f5f3ff' },
     { icon: 'account-multiple',label: 'Members',         sub: 'Review school and club membership', onPress: () => router.push('/schools'), color: '#059669', bg: '#ecfdf5' },
@@ -98,7 +99,7 @@ function UserHome({ user }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <Surface style={styles.welcomeCard} elevation={0}>
         <Text style={styles.welcomeTitle}>
-          {user?.firstName ? `Welcome back, ${user.firstName}! 👋` : 'Welcome to My Skool Club! 🎓'}
+          {user?.firstName ? `Welcome back, ${user.firstName}!` : 'Welcome to My Skool Club!'}
         </Text>
         <Text style={styles.welcomeSub}>
           Connect with your school community, join clubs, and stay updated.

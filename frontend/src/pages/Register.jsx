@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { GraduationCap, AlertTriangle, Eye, EyeOff, Check, Circle, CheckCircle2, XCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 // Password strength rules
@@ -90,7 +91,7 @@ export default function Register() {
         {/* Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-2xl mb-3 shadow-lg">
-            <span className="text-2xl">🎓</span>
+            <GraduationCap className="h-7 w-7 text-white" strokeWidth={2} aria-hidden="true" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">Create Account</h1>
           <p className="text-gray-500 text-sm">Join My Skool Club — it's free!</p>
@@ -99,7 +100,7 @@ export default function Register() {
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
           {error && (
             <div className="mb-5 flex items-start gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-              <span className="mt-0.5">⚠️</span>
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" strokeWidth={2} aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
@@ -169,10 +170,10 @@ export default function Register() {
                 <button
                   type="button" tabIndex={-1}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  {showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} aria-hidden="true" /> : <Eye className="h-5 w-5" strokeWidth={2} aria-hidden="true" />}
                 </button>
               </div>
 
@@ -205,7 +206,7 @@ export default function Register() {
                     {ruleResults.map((r) => (
                       <li key={r.id} className="flex items-center gap-1.5 text-xs">
                         <span className={r.passed ? 'text-green-500' : 'text-gray-400'}>
-                          {r.passed ? '✓' : '○'}
+                          {r.passed ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" /> : <Circle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
                         </span>
                         <span className={r.passed ? 'text-green-700' : 'text-gray-500'}>
                           {r.label}
@@ -243,14 +244,14 @@ export default function Register() {
                 <button
                   type="button" tabIndex={-1}
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   aria-label={showConfirm ? 'Hide password' : 'Show password'}
                 >
-                  {showConfirm ? '🙈' : '👁️'}
+                  {showConfirm ? <EyeOff className="h-5 w-5" strokeWidth={2} aria-hidden="true" /> : <Eye className="h-5 w-5" strokeWidth={2} aria-hidden="true" />}
                 </button>
                 {touched.confirmPassword && formData.confirmPassword && (
-                  <span className="absolute right-10 top-1/2 -translate-y-1/2 text-base">
-                    {passwordsMatch ? '✅' : '❌'}
+                  <span className="absolute right-10 top-1/2 -translate-y-1/2">
+                    {passwordsMatch ? <CheckCircle2 className="h-5 w-5 text-green-600" strokeWidth={2} aria-hidden="true" /> : <XCircle className="h-5 w-5 text-red-600" strokeWidth={2} aria-hidden="true" />}
                   </span>
                 )}
               </div>

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '../../components/Icon';
 import { useAuth } from '../../context/AuthContext';
 import { schoolsAPI, eventsAPI } from '../../services/api';
 import EventsModal from '../../components/EventsModal';

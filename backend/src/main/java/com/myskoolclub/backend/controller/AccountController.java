@@ -1,18 +1,15 @@
 package com.myskoolclub.backend.controller;
 
-import com.myskoolclub.backend.dto.DeleteAccountRequest;
 import com.myskoolclub.backend.dto.UserResponse;
 import com.myskoolclub.backend.exception.AppException;
 import com.myskoolclub.backend.repository.UserRepository;
 import com.myskoolclub.backend.service.AccountDeletionService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,10 +30,8 @@ public class AccountController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> deleteAccount(
-            @Valid @RequestBody DeleteAccountRequest request,
-            Authentication authentication) {
-        accountDeletionService.deleteAccount(authentication.getName(), request.password());
+    public ResponseEntity<Void> deleteAccount(Authentication authentication) {
+        accountDeletionService.deleteAccount(authentication.getName());
         return ResponseEntity.noContent().build();
     }
 }
