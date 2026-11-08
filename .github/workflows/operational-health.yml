@@ -35,7 +35,7 @@ jobs:
             --alerts "${ALERTS}"
 
       - name: Publish the summary to workflow logs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const summary = `${{ steps.summary.outputs.summary }}`;

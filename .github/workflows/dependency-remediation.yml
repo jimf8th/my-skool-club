@@ -66,7 +66,7 @@ jobs:
 
       - name: Resolve associated PR
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const eventName = context.eventName;
@@ -156,7 +156,7 @@ jobs:
     if: needs.diagnose-failure.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         env:
           PR_NUMBER: ${{ needs.diagnose-failure.outputs.pr_number }}
           RISK: ${{ needs.diagnose-failure.outputs.risk }}
