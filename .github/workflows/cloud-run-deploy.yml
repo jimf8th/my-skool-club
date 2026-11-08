@@ -63,7 +63,7 @@ jobs:
       digest: ${{ steps.image.outputs.digest }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify required deployment configuration
         shell: bash

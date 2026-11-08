@@ -24,7 +24,7 @@ jobs:
       ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}
       dependency_names: ${{ steps.metadata.outputs.dependency-names }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

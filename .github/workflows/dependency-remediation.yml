@@ -60,7 +60,7 @@ jobs:
       issue_title: ${{ steps.pr.outputs.issue_title }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

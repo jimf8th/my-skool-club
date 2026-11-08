@@ -16,7 +16,7 @@ jobs:
       PRODUCTION_BASE_URL: ${{ vars.PUBLIC_BASE_URL || 'https://myskoolclub.com' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run synthetic health check against production
         run: node .github/scripts/synthetic-health-check.js "${PRODUCTION_BASE_URL}"
