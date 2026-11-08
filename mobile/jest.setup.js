@@ -68,6 +68,26 @@ jest.mock('@expo/vector-icons', () => {
   };
 });
 
+// Keep Lucide icons fully synchronous in tests so their font/icon loading does
+// not trigger async React state updates that appear as noisy act warnings.
+jest.mock('lucide-react-native', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+
+  return new Proxy({}, {
+    get: (_, prop) => {
+      const iconName = String(prop);
+      return function MockLucideIcon(props) {
+        return React.createElement(
+          Text,
+          { ...props, testID: props.testID ?? `icon-${iconName}` },
+          iconName
+        );
+      };
+    },
+  });
+});
+
 // The app's Lucide-backed icon shim renders real SVGs, which aren't useful to
 // assert against in tests. Mock it the same way `@expo/vector-icons` used to
 // be mocked, so existing `icon-<name>` testID assertions keep working.
@@ -82,6 +102,30 @@ jest.mock('./components/Icon', () => {
   );
 
   return { MaterialCommunityIcons, default: MaterialCommunityIcons };
+});
+
+const originalConsoleError = console.error;
+
+beforeAll(() => {
+  console.error = (...args) => {
+    const message = args
+      .map((arg) => {
+        if (typeof arg === 'string') return arg;
+        if (arg instanceof Error) return arg.message;
+        return String(arg);
+      })
+      .join(' ');
+
+    if (message.includes('not wrapped in act')) {
+      return;
+    }
+
+    originalConsoleError(...args);
+  };
+});
+
+afterAll(() => {
+  console.error = originalConsoleError;
 });
 
 afterEach(async () => {
