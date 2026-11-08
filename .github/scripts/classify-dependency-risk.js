@@ -3,6 +3,79 @@
 const fs = require('fs');
 const path = require('path');
 
+function loadPolicy() {
+  const fallback = {
+    defaults: { unknownRisk: 'HIGH', maxAutoMergeRisk: 'LOW' },
+    sensitivePackages: [
+      'firebase-admin',
+      'firebase',
+      'spring-security',
+      'spring-boot-starter-security',
+      'postgresql',
+      'flyway-core',
+      'flyway-database-postgresql',
+      'react-router-dom',
+      'axios',
+      'openai',
+      '@playwright/test',
+      'vite',
+      'expo',
+      'react-native',
+    ],
+  };
+
+  try {
+    const policyPath = path.resolve(process.cwd(), '.github/security/dependency-risk-policy.yml');
+    if (!fs.existsSync(policyPath)) return fallback;
+    const raw = fs.readFileSync(policyPath, 'utf8').trim();
+    if (!raw) return fallback;
+
+    // The repository policy file is JSON-formatted YAML; parse as JSON for deterministic behavior.
+    const parsed = JSON.parse(raw);
+    return {
+      ...fallback,
+      ...parsed,
+      defaults: {
+        ...fallback.defaults,
+        ...(parsed.defaults || {}),
+      },
+      sensitivePackages: Array.isArray(parsed.sensitivePackages)
+        ? parsed.sensitivePackages
+        : fallback.sensitivePackages,
+    };
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeUpdateType(value) {
+  const raw = String(value || '').toLowerCase().trim();
+  if (!raw) return 'unknown';
+  if (raw.includes('major')) return 'major';
+  if (raw.includes('minor')) return 'minor';
+  if (raw.includes('patch')) return 'patch';
+  return raw;
+}
+
+function toRiskRank(value) {
+  const normalized = String(value || '').toUpperCase();
+  if (normalized === 'LOW') return 1;
+  if (normalized === 'MEDIUM') return 2;
+  if (normalized === 'HIGH') return 3;
+  return 99;
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isSensitivePackageMatch(packageName, sensitiveName) {
+  const normalizedPackage = String(packageName || '').toLowerCase();
+  const normalizedSensitive = String(sensitiveName || '').toLowerCase();
+  const matcher = new RegExp(`(^|[/:@._-])${escapeRegex(normalizedSensitive)}([/:@._-]|$)`);
+  return matcher.test(normalizedPackage);
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -42,31 +115,13 @@ function isSourceChange(file) {
 }
 
 function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalSeverity, hasSourceChanges, changedOutsideManifests }) {
-  const policy = {
-    defaults: { unknownRisk: 'HIGH' },
-    sensitivePackages: [
-      'firebase-admin',
-      'firebase',
-      'spring-security',
-      'spring-boot-starter-security',
-      'postgresql',
-      'flyway-core',
-      'flyway-database-postgresql',
-      'react-router-dom',
-      'axios',
-      'openai',
-      '@playwright/test',
-      'vite',
-      'expo',
-      'react-native',
-    ],
-  };
+  const policy = loadPolicy();
   const normalizedPackageNames = packageNames.map((name) => name.toLowerCase());
   const sensitivePackage = normalizedPackageNames.some((name) =>
-    policy.sensitivePackages.some((sensitive) => name.includes(sensitive.toLowerCase()))
+    policy.sensitivePackages.some((sensitive) => isSensitivePackageMatch(name, sensitive))
   );
-  const multiDependency = packageNames.length > 1 || files.filter((file) => /package-lock\.json|pom\.xml|package\.json/.test(file)).length > 1;
-  const manifestOnly = files.every((file) => /package\.json|package-lock\.json|pom\.xml|Dockerfile|docker-compose|\.ya?ml|lock$|\.lock/.test(file));
+  const multiDependency = packageNames.length > 1;
+  const manifestOnly = files.every((file) => /package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|pom\.xml|Dockerfile|docker-compose|\.ya?ml|lock$|\.lock/.test(file));
 
   let risk = 'HIGH';
   let reasons = [];
@@ -94,7 +149,8 @@ function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalS
     reasons.push('low-risk logic is blocked because the change is not manifest-only');
   }
 
-  const autoMergeEligible = risk === 'LOW';
+  const maxAutoMergeRisk = String(policy.defaults?.maxAutoMergeRisk || 'LOW').toUpperCase();
+  const autoMergeEligible = toRiskRank(risk) <= toRiskRank(maxAutoMergeRisk);
   return {
     classification: risk,
     autoMergeEligible,
@@ -116,10 +172,10 @@ function main() {
   const files = (args.files || process.env.CHANGED_FILES || '').split(/\s+/).filter(Boolean);
   const packageNames = (args.packageNames || args['package-names'] || process.env.PACKAGE_NAMES || '').split(/[\s,]+/).filter(Boolean);
   const ecosystem = (args.ecosystem || detectEcosystem(files) || process.env.ECOSYSTEM || 'unknown').toLowerCase();
-  const updateType = (args.updateType || args['update-type'] || process.env.UPDATE_TYPE || 'minor').toLowerCase();
+  const updateType = normalizeUpdateType(args.updateType || args['update-type'] || process.env.UPDATE_TYPE || 'unknown');
   const hasCriticalSeverity = ['critical', 'high'].includes((args.severity || process.env.SECURITY_SEVERITY || 'unknown').toLowerCase());
   const hasSourceChanges = files.some(isSourceChange);
-  const changedOutsideManifests = files.some((file) => !/package\.json|package-lock\.json|pom\.xml|Dockerfile|docker-compose|\.ya?ml|node_modules/.test(file) && !file.startsWith('.github/'));
+  const changedOutsideManifests = files.some((file) => !/package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|pom\.xml|Dockerfile|docker-compose|\.ya?ml|node_modules/.test(file) && !file.startsWith('.github/'));
 
   const result = classifyRisk({
     files,

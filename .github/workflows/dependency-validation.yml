@@ -20,10 +20,19 @@ jobs:
       changed_files: ${{ steps.file-scan.outputs.files }}
       classification: ${{ steps.classify.outputs.classification }}
       auto_merge_eligible: ${{ steps.classify.outputs.auto_merge_eligible }}
+      update_type: ${{ steps.metadata.outputs.update-type }}
+      ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}
+      dependency_names: ${{ steps.metadata.outputs.dependency-names }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Identify changed files
         id: file-scan
@@ -39,9 +48,10 @@ jobs:
         id: classify
         env:
           CHANGED_FILES: ${{ steps.file-scan.outputs.files }}
-          PACKAGE_NAMES: "firebase-admin, spring-security, postgresql, flyway-core, react-router-dom, axios"
-          ECOSYSTEM: "maven"
-          UPDATE_TYPE: "patch"
+          PACKAGE_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          SECURITY_SEVERITY: ${{ steps.metadata.outputs.alert-severity || 'unknown' }}
         run: |
           node .github/scripts/classify-dependency-risk.js --files "$CHANGED_FILES" --package-names "$PACKAGE_NAMES" --ecosystem "$ECOSYSTEM" --update-type "$UPDATE_TYPE"
           node .github/scripts/classify-dependency-risk.js --files "$CHANGED_FILES" --package-names "$PACKAGE_NAMES" --ecosystem "$ECOSYSTEM" --update-type "$UPDATE_TYPE" > /tmp/risk.json
@@ -52,12 +62,49 @@ jobs:
 
   test-suite:
     needs: preflight
-    if: ${{ always() && needs.preflight.outputs.classification != 'BLOCKED' }}
+    if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.classification != 'BLOCKED' }}
     uses: ./.github/workflows/ci-tests.yml
 
-  report-result:
+  review-gate:
     needs: [preflight, test-suite]
-    if: ${{ always() }}
+    if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.classification != 'LOW' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const labels = (pr.labels || []).map((l) => String(l.name || '').toLowerCase());
+            const hasCopilotReviewedLabel = labels.includes('copilot-reviewed');
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+
+            const approvedByHuman = reviews.some((review) => {
+              const login = String(review?.user?.login || '');
+              return review.state === 'APPROVED' && !login.endsWith('[bot]');
+            });
+
+            if (!approvedByHuman && !hasCopilotReviewedLabel) {
+              core.setFailed('MEDIUM/HIGH dependency updates require either a human APPROVED review or the copilot-reviewed label before merge.');
+            }
+
+  report-result:
+    needs: [preflight, test-suite, review-gate]
+    if: ${{ always() && needs.preflight.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,14 +117,20 @@ jobs:
             const risk = '${{ needs.preflight.outputs.classification }}';
             const autoMerge = '${{ needs.preflight.outputs.auto_merge_eligible }}';
             const tests = '${{ needs.test-suite.result }}';
+            const reviewGate = '${{ needs.review-gate.result || 'not-required' }}';
+            const ecosystem = '${{ needs.preflight.outputs.ecosystem || 'unknown' }}';
+            const updateType = '${{ needs.preflight.outputs.update_type || 'unknown' }}';
             const summary = [
               '## Dependency validation summary',
               '',
+              `- Ecosystem: **${ecosystem}**`,
+              `- Update type: **${updateType}**`,
               `- Risk classification: **${risk}**`,
               `- Auto-merge eligible: **${autoMerge}**`,
               `- CI test result: **${tests}**`,
+              `- Review gate: **${reviewGate}**`,
               '',
-              'If the risk is MEDIUM or HIGH, the PR remains blocked for human approval.',
+              'If the risk is MEDIUM or HIGH, the PR remains blocked until a human approval or copilot-reviewed label is present.',
               'If the CI job fails, the dependency update is not eligible for auto-merge.'
             ].join('\n');
 
@@ -90,7 +143,7 @@ jobs:
 
   auto-merge:
     needs: [preflight, test-suite]
-    if: ${{ needs.preflight.outputs.auto_merge_eligible == 'true' && needs.test-suite.result == 'success' }}
+    if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.auto_merge_eligible == 'true' && needs.test-suite.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

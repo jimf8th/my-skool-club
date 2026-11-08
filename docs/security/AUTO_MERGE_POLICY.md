@@ -11,6 +11,7 @@ Automatic merging is allowed only when all conditions are met:
 - the PR has no unresolved security findings
 - no source-code changes beyond dependency metadata exist
 - no conflicting dependency updates are pending
+- Dependabot metadata can be resolved for ecosystem, package names, and update type
 
 ## Manual repo settings required
 
@@ -24,6 +25,7 @@ The GitHub repository must enable:
 ## Security constraints
 
 - MEDIUM- and HIGH-risk updates are never auto-merged.
+- MEDIUM/HIGH updates require an explicit review gate before merge: either a human `APPROVED` review or a `copilot-reviewed` label.
 - Security fixes with major version or runtime change remain manual.
 - No untrusted PR code is executed under `pull_request_target`.
 - The automation is intentionally conservative and requires human review for ambiguous changes.
