@@ -29,6 +29,7 @@ env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GCP_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
   GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
   ALERT_EMAIL_RECIPIENTS: ${{ vars.ALERT_EMAIL_RECIPIENTS || secrets.DEPLOY_NOTIFICATION_EMAIL }}
   ARTIFACT_REPO: my-skool-club
   IMAGE_NAME: myskoolclub
@@ -282,7 +283,7 @@ jobs:
           echo "Image: ${{ needs.build-and-publish.outputs.image || 'not built' }}"
 
       - name: Send Slack notification
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
@@ -290,7 +291,7 @@ jobs:
               "text": "MySkoolClub deployment status: ${{ needs.deploy-production.result == 'success' && 'production deployed successfully' || needs.deploy-staging.result == 'success' && 'staging validated successfully' || 'deployment failed' }}"
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
 
       - name: Send owner email notification
         if: ${{ env.ALERT_EMAIL_RECIPIENTS != '' }}
