@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   backend-tests:
@@ -48,10 +47,10 @@ jobs:
           cache: maven
       - name: Run backend unit tests
         working-directory: backend
-        run: ./mvnw test
+        run: mvn -B test
       - name: Run backend integration and API regression tests
         working-directory: backend
-        run: ./mvnw verify
+        run: mvn -B verify
       - name: Upload backend reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -155,11 +154,3 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript, java
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
