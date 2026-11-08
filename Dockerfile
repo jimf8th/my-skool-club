@@ -13,7 +13,7 @@ WORKDIR /app/backend
 RUN mvn package -DskipTests
 
 # ---- Runtime stage ----
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:24-jre-alpine
 WORKDIR /app
 COPY --from=build /app/backend/target/*.jar app.jar
 EXPOSE 8080
