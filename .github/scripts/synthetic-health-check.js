@@ -5,8 +5,9 @@ const https = require('https');
 
 function request(url) {
   return new Promise((resolve, reject) => {
-    const transport = url.protocol === 'https:' ? https : http;
-    const req = transport.get(url, { headers: { 'User-Agent': 'MySkoolClub-Synthetic-Monitor/1.0' } }, (res) => {
+    const targetUrl = typeof url === 'string' ? new URL(url) : url;
+    const transport = targetUrl.protocol === 'https:' ? https : http;
+    const req = transport.get(targetUrl, { headers: { 'User-Agent': 'MySkoolClub-Synthetic-Monitor/1.0' } }, (res) => {
       let body = '';
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => resolve({ statusCode: res.statusCode, body }));
