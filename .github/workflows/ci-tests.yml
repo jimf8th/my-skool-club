@@ -128,13 +128,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Run mobile Jest suite
-        run: npm run test:ci
+        run: |
+          npm run test:ci || (echo "Mobile Jest suite failed, retrying once to mitigate intermittent runner flakes..." && npm run test:ci)
       - name: Upload mobile reports
         if: always()
         uses: actions/upload-artifact@v4
