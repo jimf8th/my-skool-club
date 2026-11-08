@@ -100,10 +100,11 @@ describe('EventsModal', () => {
     eventsAPI.list.mockResolvedValue([event]);
     fireEvent.press(screen.getByText('Create Event'));
 
+    const expectedEventTime = new Date(2030, 0, 11, 11, 0).toISOString().replace('Z', '');
     await waitFor(() => expect(eventsAPI.create).toHaveBeenCalledWith(10, {
       title: 'Fundraiser',
       location: 'Gym',
-      eventTime: expect.stringMatching(/^2030-01-11T18:00:00\.000$/),
+      eventTime: expectedEventTime,
     }));
   });
 
