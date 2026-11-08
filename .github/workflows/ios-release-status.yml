@@ -1,0 +1,42 @@
+name: iOS Release Status Monitor
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      app_store_version_id:
+        description: App Store version ID to inspect.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    name: Check Apple App Store status
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Poll App Store Connect release status
+        env:
+          APP_STORE_APP_ID: ${{ vars.ASC_APP_ID || secrets.ASC_APP_ID }}
+          APP_STORE_VERSION_ID: ${{ inputs.app_store_version_id || vars.APP_STORE_VERSION_ID || secrets.APP_STORE_VERSION_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_ISSUER_ID: ${{ secrets.APPLE_ISSUER_ID }}
+        shell: bash
+        run: |
+          if [[ -z "${APP_STORE_APP_ID}" || -z "${APP_STORE_VERSION_ID}" || -z "${APPLE_API_KEY}" || -z "${APPLE_API_KEY_ID}" || -z "${APPLE_ISSUER_ID}" ]]; then
+            echo "Apple App Store Connect credentials are not configured for release monitoring."
+            exit 0
+          fi
+          node .github/scripts/apple-store-status.js --appId "${APP_STORE_APP_ID}" --versionId "${APP_STORE_VERSION_ID}"

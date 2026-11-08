@@ -1,0 +1,66 @@
+{
+  "defaults": {
+    "unknownRisk": "HIGH",
+    "maxAutoMergeRisk": "LOW",
+    "manualApprovalRequiredFor": ["minor", "major", "multiple"],
+    "autoMergeRequiresNoSourceChanges": true,
+    "autoMergeRequiresAllChecks": true
+  },
+  "sensitivePackages": [
+    "firebase-admin",
+    "firebase",
+    "spring-security",
+    "spring-boot-starter-security",
+    "postgresql",
+    "flyway-core",
+    "flyway-database-postgresql",
+    "react-router-dom",
+    "axios",
+    "openai",
+    "@playwright/test",
+    "vite",
+    "expo",
+    "react-native"
+  ],
+  "sensitivePaths": [
+    "backend/src/main/java",
+    "backend/src/main/resources",
+    "frontend/src",
+    "mobile/src",
+    "Dockerfile",
+    "docker-compose.yml",
+    "cloud-run-service.yaml",
+    ".github/workflows",
+    "scripts/"
+  ],
+  "riskRules": {
+    "LOW": {
+      "conditions": [
+        "updateType is patch",
+        "sourceCodeChanges is false",
+        "securitySensitivePackage is false",
+        "unknownRisk is false",
+        "manifestChanges are limited to a single manifest or lockfile"
+      ]
+    },
+    "MEDIUM": {
+      "conditions": [
+        "updateType is minor",
+        "multiple related dependency updates in the same PR",
+        "shared libraries changed",
+        "test coverage may be incomplete",
+        "manual compatibility review is recommended"
+      ]
+    },
+    "HIGH": {
+      "conditions": [
+        "updateType is major",
+        "authentication, security, crypto, or database dependencies are affected",
+        "runtime or deployment manifests are changed",
+        "source code changes are present",
+        "risk classification is unknown",
+        "security advisory severity is critical or high"
+      ]
+    }
+  }
+}

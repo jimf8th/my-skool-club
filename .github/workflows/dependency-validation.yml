@@ -1,0 +1,111 @@
+name: Dependency validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  preflight:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' || github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    outputs:
+      changed_files: ${{ steps.file-scan.outputs.files }}
+      classification: ${{ steps.classify.outputs.classification }}
+      auto_merge_eligible: ${{ steps.classify.outputs.auto_merge_eligible }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Identify changed files
+        id: file-scan
+        shell: bash
+        run: |
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          files=$(git diff --name-only "$base_sha" "$head_sha" | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$files"
+
+      - name: Classify dependency risk
+        id: classify
+        env:
+          CHANGED_FILES: ${{ steps.file-scan.outputs.files }}
+          PACKAGE_NAMES: "firebase-admin, spring-security, postgresql, flyway-core, react-router-dom, axios"
+          ECOSYSTEM: "maven"
+          UPDATE_TYPE: "patch"
+        run: |
+          node .github/scripts/classify-dependency-risk.js --files "$CHANGED_FILES" --package-names "$PACKAGE_NAMES" --ecosystem "$ECOSYSTEM" --update-type "$UPDATE_TYPE"
+          node .github/scripts/classify-dependency-risk.js --files "$CHANGED_FILES" --package-names "$PACKAGE_NAMES" --ecosystem "$ECOSYSTEM" --update-type "$UPDATE_TYPE" > /tmp/risk.json
+          classification=$(node -p "require('/tmp/risk.json').classification")
+          auto_merge=$(node -p "require('/tmp/risk.json').autoMergeEligible")
+          echo "classification=$classification" >> "$GITHUB_OUTPUT"
+          echo "auto_merge_eligible=$auto_merge" >> "$GITHUB_OUTPUT"
+
+  test-suite:
+    needs: preflight
+    if: ${{ always() && needs.preflight.outputs.classification != 'BLOCKED' }}
+    uses: ./.github/workflows/ci-tests.yml
+
+  report-result:
+    needs: [preflight, test-suite]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const risk = '${{ needs.preflight.outputs.classification }}';
+            const autoMerge = '${{ needs.preflight.outputs.auto_merge_eligible }}';
+            const tests = '${{ needs.test-suite.result }}';
+            const summary = [
+              '## Dependency validation summary',
+              '',
+              `- Risk classification: **${risk}**`,
+              `- Auto-merge eligible: **${autoMerge}**`,
+              `- CI test result: **${tests}**`,
+              '',
+              'If the risk is MEDIUM or HIGH, the PR remains blocked for human approval.',
+              'If the CI job fails, the dependency update is not eligible for auto-merge.'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary,
+            }).catch(() => {});
+
+  auto-merge:
+    needs: [preflight, test-suite]
+    if: ${{ needs.preflight.outputs.auto_merge_eligible == 'true' && needs.test-suite.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable native auto-merge for eligible low-risk PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr view "${{ github.event.pull_request.number }}" --json number,title,mergeStateStatus,autoMergeRequest >/tmp/pr.json || true
+          if grep -q 'null' /tmp/pr.json 2>/dev/null; then
+            echo "Native auto-merge is not enabled for this repository. Configure GitHub auto-merge or repository rules to allow it."
+            exit 0
+          fi
+          gh pr merge "${{ github.event.pull_request.number }}" --auto --merge --delete-branch || {
+            echo "Auto-merge was not enabled or branch protection prevented it; the PR remains manual."
+            exit 0
+          }
