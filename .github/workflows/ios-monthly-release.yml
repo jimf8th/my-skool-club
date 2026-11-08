@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload mobile test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-release-test-reports
           path: |
