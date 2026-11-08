@@ -13,6 +13,13 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',
       exclude: ['src/**/*.test.{js,jsx}', 'src/test/**', 'src/main.jsx'],
+      thresholds: {
+        // Guard against regressions from the current baseline while the suite expands.
+        lines: 15,
+        functions: 30,
+        statements: 15,
+        branches: 50,
+      },
     },
   },
   build: {

@@ -135,7 +135,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run mobile Jest suite
-        run: npm test -- --runInBand --coverage --ci
+        run: npm run test:ci
       - name: Upload mobile reports
         if: always()
         uses: actions/upload-artifact@v4
