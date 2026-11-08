@@ -1,0 +1,17 @@
+appId: com.myskoolclub.app.test
+---
+- clearKeychain
+- launchApp:
+    clearState: true
+- assertVisible: "Welcome Back"
+- tapOn: "Email"
+- inputText: ${EMAIL}
+- tapOn: "Password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    text: "Sign In"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Home"
+    timeout: 20000

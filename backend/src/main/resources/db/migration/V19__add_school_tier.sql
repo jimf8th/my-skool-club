@@ -1,0 +1,5 @@
+ALTER TABLE schools
+    ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'STANDARD';
+
+ALTER TABLE schools
+    ADD CONSTRAINT chk_schools_tier CHECK (tier IN ('STANDARD', 'PREMIUM'));

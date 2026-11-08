@@ -1,0 +1,58 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "APP_ENV": "dev",
+        "EXPO_PUBLIC_APP_ENV": "dev"
+      }
+    },
+    "development-simulator": {
+      "extends": "development",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "test": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {
+        "APP_ENV": "test",
+        "EXPO_PUBLIC_APP_ENV": "test",
+        "EXPO_PUBLIC_API_URL": "https://myskoolclub.com/api"
+      }
+    },
+    "test-development": {
+      "extends": "test",
+      "developmentClient": true
+    },
+    "test-simulator": {
+      "extends": "test-development",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "environment": "production",
+      "env": {
+        "APP_ENV": "prod",
+        "EXPO_PUBLIC_APP_ENV": "prod",
+        "EXPO_PUBLIC_API_URL": "https://myskoolclub.com/api"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6800048941"
+      }
+    }
+  }
+}

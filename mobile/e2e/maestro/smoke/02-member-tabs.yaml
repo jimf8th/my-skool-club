@@ -1,0 +1,35 @@
+appId: com.myskoolclub.app.test
+name: Authenticated member tab and session smoke
+tags:
+  - smoke
+  - authenticated
+  - member
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: ${E2E_MEMBER_EMAIL}
+      PASSWORD: ${E2E_MEMBER_PASSWORD}
+- assertVisible:
+    text: "Home"
+    selected: true
+- tapOn: "Events"
+- assertVisible:
+    text: "Events"
+    selected: true
+- tapOn: "Schools"
+- assertVisible: "Schools"
+- tapOn: "Clubs"
+- assertVisible: "Clubs"
+- tapOn: "Profile"
+- assertVisible: "Account Info"
+- assertVisible: "Settings"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Account Info"
+    timeout: 20000
+- tapOn: "Home"
+- assertVisible:
+    text: "Home"
+    selected: true

@@ -1,34 +1,35 @@
-# Node modules
-frontend/node_modules
-frontend/.vite
-frontend/dist
-
-# Maven
-backend/target
-backend/.mvn
-
-# IDE files
-.vscode
-.idea
-*.iml
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs
-
-# Environment files
-.env
-.env.local
-.env.production
-
-# Git
+# Version-control and local configuration
 .git
 .gitignore
+.env
+.env.*
+!.env.example
 
-# README files
+# Dependencies and build outputs
+**/node_modules
+frontend/node
+frontend/dist
+frontend/build
+frontend/.vite
+backend/target
+backend/build
+mobile/ios
+mobile/android
+mobile/coverage
+
+# Mobile sources are not part of the Cloud Run image
+mobile
+
+# Local and generated files
+artifacts
+coverage
+logs
+*.log
+.DS_Store
+.idea
+.vscode
+*.iml
+
+# Repository-only documentation
 README.md
 *.md

@@ -1,0 +1,6 @@
+{
+  "state": "disabled",
+  "updatedAt": "2026-11-07T00:00:00Z",
+  "reason": "Production deployment is allowed by default. Enable only during an incident or required manual stop.",
+  "manualRecoveryRequired": false
+}

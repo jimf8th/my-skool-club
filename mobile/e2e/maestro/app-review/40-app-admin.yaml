@@ -1,0 +1,38 @@
+appId: ${APP_ID}
+name: App Review application-administrator rehearsal
+tags:
+  - app-review
+  - app-admin
+---
+- runFlow:
+    file: subflows/login.yaml
+    env:
+      EMAIL: ${E2E_APP_ADMIN_EMAIL}
+      PASSWORD: ${E2E_APP_ADMIN_PASSWORD}
+- assertVisible: "App Administrator"
+- assertVisible: "Admin Actions"
+- tapOn: "Manage Schools"
+- extendedWaitUntil:
+    visible: "Add School"
+    timeout: 20000
+- tapOn: "Add School"
+- assertVisible: "School Name *"
+- assertVisible: "School Admin *"
+- tapOn:
+    id: "close-add-school-form"
+- tapOn: "Clubs"
+- extendedWaitUntil:
+    visible: "Cypress Ridge Academy"
+    timeout: 20000
+- tapOn: "Cypress Ridge Academy"
+- extendedWaitUntil:
+    visible: "Add Club"
+    timeout: 20000
+- tapOn: "Add Club"
+- assertVisible: "Club Name *"
+- assertVisible: "First Club Admin *"
+- tapOn:
+    id: "close-add-club-form"
+- tapOn: "Profile"
+- assertVisible: "App Administrator"
+- assertVisible: "Account Info"

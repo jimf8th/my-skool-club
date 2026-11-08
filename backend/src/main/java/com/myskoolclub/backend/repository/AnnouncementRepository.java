@@ -1,20 +1,18 @@
 package com.myskoolclub.backend.repository;
 
 import com.myskoolclub.backend.model.Announcement;
-import org.springframework.data.mongodb.repository.MongoRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
-@Repository
-public interface AnnouncementRepository extends MongoRepository<Announcement, String> {
-    
-    // Find all active announcements for a school, ordered by creation date (newest first)
-    List<Announcement> findBySchoolIdAndActiveOrderByCreatedAtDesc(String schoolId, boolean active);
-    
-    // Find all announcements for a school (including inactive)
-    List<Announcement> findBySchoolIdOrderByCreatedAtDesc(String schoolId);
-    
-    // Find by creator
-    List<Announcement> findByCreatedByAndActiveOrderByCreatedAtDesc(String createdBy, boolean active);
+public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
+
+    @Query("SELECT a FROM Announcement a JOIN FETCH a.school JOIN FETCH a.createdBy WHERE a.school.id = :schoolId ORDER BY a.createdAt DESC")
+    List<Announcement> findBySchoolIdOrderByCreatedAtDesc(@Param("schoolId") Long schoolId);
+
+    @Query("SELECT a FROM Announcement a JOIN FETCH a.school JOIN FETCH a.createdBy WHERE a.id = :id")
+    Optional<Announcement> findByIdWithDetails(@Param("id") Long id);
 }

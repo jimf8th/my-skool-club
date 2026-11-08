@@ -1,0 +1,43 @@
+name: Synthetic production monitoring
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  synthetic-check:
+    runs-on: ubuntu-latest
+    env:
+      PRODUCTION_BASE_URL: ${{ vars.PUBLIC_BASE_URL || 'https://myskoolclub.com' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run synthetic health check against production
+        run: node .github/scripts/synthetic-health-check.js "${PRODUCTION_BASE_URL}"
+
+      - name: Create issue when production health is degraded
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Synthetic production health check failed',
+              body: [
+                '## Synthetic health failure',
+                '',
+                'Production availability checks did not satisfy the repository health gate.',
+                '',
+                '- URL checked: ' + process.env.PRODUCTION_BASE_URL,
+                '- Action required: investigate the production endpoint and confirm service health before re-enabling automation.',
+                '- Status: alerting was triggered because the repository does not permit silent deployment health failures.'
+              ].join('\n'),
+              labels: ['monitoring', 'production-health', 'needs-review'],
+            }).catch(() => {});

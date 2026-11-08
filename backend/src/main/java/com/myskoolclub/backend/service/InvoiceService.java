@@ -1,400 +1,343 @@
 package com.myskoolclub.backend.service;
 
+import com.myskoolclub.backend.dto.CancelInvoiceRequest;
+import com.myskoolclub.backend.dto.InvoiceRequest;
+import com.myskoolclub.backend.dto.InvoiceResponse;
+import com.myskoolclub.backend.dto.InvoiceSummaryResponse;
+import com.myskoolclub.backend.dto.LineItemRequest;
+import com.myskoolclub.backend.dto.RejectInvoiceRequest;
+import com.myskoolclub.backend.exception.AppException;
+import com.myskoolclub.backend.model.AppRole;
+import com.myskoolclub.backend.model.Club;
 import com.myskoolclub.backend.model.Invoice;
+import com.myskoolclub.backend.model.InvoiceAuditAction;
+import com.myskoolclub.backend.model.InvoiceAuditLog;
+import com.myskoolclub.backend.model.InvoiceLineItem;
+import com.myskoolclub.backend.model.InvoiceStatus;
+import com.myskoolclub.backend.model.MembershipRole;
+import com.myskoolclub.backend.model.MembershipStatus;
+import com.myskoolclub.backend.model.NotificationType;
+import com.myskoolclub.backend.model.User;
+import com.myskoolclub.backend.repository.ClubMembershipRepository;
+import com.myskoolclub.backend.repository.ClubRepository;
+import com.myskoolclub.backend.repository.InvoiceAuditLogRepository;
 import com.myskoolclub.backend.repository.InvoiceRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.myskoolclub.backend.repository.SchoolMembershipRepository;
+import com.myskoolclub.backend.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class InvoiceService {
-    
-    @Autowired
-    private InvoiceRepository invoiceRepository;
-    
-    // Create operations
-    public Invoice createInvoice(Invoice invoice) {
-        validateInvoice(invoice);
-        
-        // Generate invoice number if not provided
-        if (invoice.getInvoiceNumber() == null || invoice.getInvoiceNumber().trim().isEmpty()) {
-            String userName = invoice.getCreatedByName() != null ? invoice.getCreatedByName() : "USER";
-            invoice.setInvoiceNumber(generateInvoiceNumber(userName));
+
+    private static final Set<InvoiceStatus> CANCELLABLE_STATUSES =
+            Set.of(InvoiceStatus.DRAFT, InvoiceStatus.SUBMITTED, InvoiceStatus.APPROVED);
+
+    private final InvoiceRepository invoiceRepository;
+    private final InvoiceAuditLogRepository invoiceAuditLogRepository;
+    private final ClubRepository clubRepository;
+    private final ClubMembershipRepository clubMembershipRepository;
+    private final SchoolMembershipRepository schoolMembershipRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    // ---- Reads ----
+
+    @Transactional(readOnly = true)
+    public List<InvoiceSummaryResponse> listInvoices(Long clubId) {
+        return invoiceRepository.findByClubIdOrderByCreatedAtDesc(clubId).stream()
+                .map(InvoiceSummaryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public InvoiceResponse getInvoice(Long clubId, Long invoiceId) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        return toResponse(invoice);
+    }
+
+    // ---- Draft lifecycle (creator only) ----
+
+    @Transactional
+    public InvoiceResponse createDraft(Long clubId, InvoiceRequest request, String requesterEmail) {
+        Club club = requireClub(clubId);
+        User creator = requireUser(requesterEmail);
+
+        Invoice invoice = Invoice.builder()
+                .club(club)
+                .createdBy(creator)
+                .title(request.title())
+                .notes(request.notes())
+                .paymentRequired(request.paymentRequired())
+                .payeeName(request.payeeName())
+                .payeeEmail(request.payeeEmail())
+                .status(InvoiceStatus.DRAFT)
+                .build();
+
+        List<InvoiceLineItem> items = buildLineItems(invoice, request.lineItems());
+        invoice.setLineItems(items);
+        invoice.setTotalAmount(sumTotal(items));
+
+        Invoice saved = invoiceRepository.save(invoice);
+        logAudit(saved, InvoiceAuditAction.CREATED, creator, null, InvoiceStatus.DRAFT, null);
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public InvoiceResponse updateDraft(Long clubId, Long invoiceId, InvoiceRequest request, String requesterEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User requester = requireUser(requesterEmail);
+        requireOwner(invoice, requester);
+        requireStatus(invoice, InvoiceStatus.DRAFT, "Only draft invoices can be edited");
+
+        invoice.setTitle(request.title());
+        invoice.setNotes(request.notes());
+        invoice.setPaymentRequired(request.paymentRequired());
+        invoice.setPayeeName(request.payeeName());
+        invoice.setPayeeEmail(request.payeeEmail());
+
+        invoice.getLineItems().clear();
+        List<InvoiceLineItem> items = buildLineItems(invoice, request.lineItems());
+        invoice.getLineItems().addAll(items);
+        invoice.setTotalAmount(sumTotal(items));
+
+        logAudit(invoice, InvoiceAuditAction.UPDATED, requester, InvoiceStatus.DRAFT, InvoiceStatus.DRAFT, null);
+        return toResponse(invoice);
+    }
+
+    @Transactional
+    public void deleteDraft(Long clubId, Long invoiceId, String requesterEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User requester = requireUser(requesterEmail);
+        requireOwner(invoice, requester);
+        requireStatus(invoice, InvoiceStatus.DRAFT, "Only draft invoices can be deleted");
+        invoiceRepository.delete(invoice);
+    }
+
+    @Transactional
+    public InvoiceResponse submit(Long clubId, Long invoiceId, String requesterEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User requester = requireUser(requesterEmail);
+        requireOwner(invoice, requester);
+        requireStatus(invoice, InvoiceStatus.DRAFT, "Only draft invoices can be submitted");
+
+        invoice.setStatus(InvoiceStatus.SUBMITTED);
+        invoice.setSubmittedAt(LocalDateTime.now());
+        invoice.setRejectionReason(null);
+
+        logAudit(invoice, InvoiceAuditAction.SUBMITTED, requester, InvoiceStatus.DRAFT, InvoiceStatus.SUBMITTED, null);
+        notifyClubAdmins(invoice.getClub(), invoice, requester);
+        return toResponse(invoice);
+    }
+
+    // ---- Admin review (club admin / school admin / app admin only) ----
+
+    @Transactional
+    public InvoiceResponse approve(Long clubId, Long invoiceId, String adminEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User admin = requireUser(adminEmail);
+        requireStatus(invoice, InvoiceStatus.SUBMITTED, "Only submitted invoices can be approved");
+
+        InvoiceStatus newStatus = invoice.isPaymentRequired() ? InvoiceStatus.APPROVED : InvoiceStatus.PAID;
+        invoice.setStatus(newStatus);
+        invoice.setApprovedAt(LocalDateTime.now());
+        invoice.setApprovedBy(admin);
+
+        if (newStatus == InvoiceStatus.PAID) {
+            invoice.setPaidAt(invoice.getApprovedAt());
+            invoice.setPaidBy(admin);
+            logAudit(invoice, InvoiceAuditAction.APPROVED, admin, InvoiceStatus.SUBMITTED, InvoiceStatus.PAID,
+                    "No payment required — closed automatically upon approval");
+            notificationService.notify(invoice.getCreatedBy(), NotificationType.INVOICE_PAID,
+                    invoiceId.toString(),
+                    "Your invoice \"" + invoice.getTitle() + "\" was approved and closed (no payment required)");
         } else {
-            // Check for duplicate invoice number
-            if (invoiceRepository.existsByInvoiceNumber(invoice.getInvoiceNumber())) {
-                throw new IllegalArgumentException("An invoice with number '" + invoice.getInvoiceNumber() + "' already exists");
-            }
+            logAudit(invoice, InvoiceAuditAction.APPROVED, admin, InvoiceStatus.SUBMITTED, InvoiceStatus.APPROVED, null);
+            notificationService.notify(invoice.getCreatedBy(), NotificationType.INVOICE_APPROVED,
+                    invoiceId.toString(),
+                    "Your invoice \"" + invoice.getTitle() + "\" was approved");
         }
-        
-        // Set initial status to PENDING for new invoices
-        invoice.setStatus("PENDING");
-        invoice.setApprovalStatus("PENDING");
-        
-        // Set system fields
-        invoice.setCreatedAt(LocalDateTime.now());
-        invoice.setUpdatedAt(LocalDateTime.now());
-        
-        // Calculate totals
-        invoice.calculateTotals();
-        
-        return invoiceRepository.save(invoice);
+        return toResponse(invoice);
     }
-    
-    // Read operations
-    public List<Invoice> getAllInvoices() {
-        return invoiceRepository.findAll();
+
+    @Transactional
+    public InvoiceResponse sendBackToDraft(Long clubId, Long invoiceId, RejectInvoiceRequest request, String adminEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User admin = requireUser(adminEmail);
+        requireStatus(invoice, InvoiceStatus.SUBMITTED, "Only submitted invoices can be sent back");
+
+        invoice.setStatus(InvoiceStatus.DRAFT);
+        invoice.setSubmittedAt(null);
+        invoice.setRejectionReason(request.reason());
+
+        logAudit(invoice, InvoiceAuditAction.SENT_BACK_TO_DRAFT, admin, InvoiceStatus.SUBMITTED, InvoiceStatus.DRAFT, request.reason());
+        notificationService.notify(invoice.getCreatedBy(), NotificationType.INVOICE_SENT_BACK,
+                invoiceId.toString(),
+                "Your invoice \"" + invoice.getTitle() + "\" needs changes: " + request.reason());
+        return toResponse(invoice);
     }
-    
-    public Page<Invoice> getAllInvoices(Pageable pageable) {
-        return invoiceRepository.findAll(pageable);
+
+    @Transactional
+    public InvoiceResponse markPaid(Long clubId, Long invoiceId, String adminEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User admin = requireUser(adminEmail);
+        requireStatus(invoice, InvoiceStatus.APPROVED, "Only approved invoices can be marked paid");
+
+        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setPaidAt(LocalDateTime.now());
+        invoice.setPaidBy(admin);
+
+        logAudit(invoice, InvoiceAuditAction.MARKED_PAID, admin, InvoiceStatus.APPROVED, InvoiceStatus.PAID, null);
+        notificationService.notify(invoice.getCreatedBy(), NotificationType.INVOICE_PAID,
+                invoiceId.toString(),
+                "Your invoice \"" + invoice.getTitle() + "\" has been marked as paid");
+        return toResponse(invoice);
     }
-    
-    public Optional<Invoice> getInvoiceById(String id) {
-        return invoiceRepository.findById(id);
-    }
-    
-    public Optional<Invoice> getInvoiceByNumber(String invoiceNumber) {
-        return invoiceRepository.findByInvoiceNumber(invoiceNumber);
-    }
-    
-    public List<Invoice> getInvoicesByClub(String clubId) {
-        return invoiceRepository.findByClubIdOrderByCreatedAtDesc(clubId);
-    }
-    
-    public Page<Invoice> getInvoicesByClub(String clubId, Pageable pageable) {
-        return invoiceRepository.findByClubId(clubId, pageable);
-    }
-    
-    public List<Invoice> getInvoicesByStatus(String status) {
-        return invoiceRepository.findByStatus(status);
-    }
-    
-    public Page<Invoice> getInvoicesByStatus(String status, Pageable pageable) {
-        return invoiceRepository.findByStatus(status, pageable);
-    }
-    
-    public List<Invoice> getInvoicesByDateRange(LocalDate startDate, LocalDate endDate) {
-        return invoiceRepository.findByIssueDateBetween(startDate, endDate);
-    }
-    
-    public List<Invoice> getOverdueInvoices() {
-        return invoiceRepository.findOverdueInvoices(LocalDate.now());
-    }
-    
-    public List<Invoice> searchInvoicesByKeyword(String keyword) {
-        return invoiceRepository.searchInvoicesByKeyword(keyword);
-    }
-    
-    public Page<Invoice> searchInvoicesByKeyword(String keyword, Pageable pageable) {
-        return invoiceRepository.searchInvoicesByKeyword(keyword, pageable);
-    }
-    
-    public List<Invoice> searchInvoicesByClubAndKeyword(String clubId, String keyword) {
-        return invoiceRepository.searchInvoicesByClubAndKeyword(clubId, keyword);
-    }
-    
-    public Page<Invoice> searchInvoicesByClubAndKeyword(String clubId, String keyword, Pageable pageable) {
-        return invoiceRepository.searchInvoicesByClubAndKeyword(clubId, keyword, pageable);
-    }
-    
-    // Advanced search method
-    public List<Invoice> advancedSearchInvoices(String search, String clubId, String status, 
-                                               LocalDate issueDateFrom, LocalDate issueDateTo,
-                                               LocalDate dueDateFrom, LocalDate dueDateTo,
-                                               BigDecimal minAmount, BigDecimal maxAmount,
-                                               String sortBy, String sortDirection) {
-        
-        List<Invoice> invoices = invoiceRepository.findAll();
-        
-        // Apply filters
-        invoices = invoices.stream()
-                .filter(invoice -> {
-                    // Search filter (invoice number, club name, bill to name, notes)
-                    if (search != null && !search.trim().isEmpty()) {
-                        String searchLower = search.toLowerCase();
-                        return (invoice.getInvoiceNumber() != null && invoice.getInvoiceNumber().toLowerCase().contains(searchLower)) ||
-                               (invoice.getClubName() != null && invoice.getClubName().toLowerCase().contains(searchLower)) ||
-                               (invoice.getBillToName() != null && invoice.getBillToName().toLowerCase().contains(searchLower)) ||
-                               (invoice.getNotes() != null && invoice.getNotes().toLowerCase().contains(searchLower));
-                    }
-                    return true;
-                })
-                .filter(invoice -> {
-                    // Club filter
-                    if (clubId != null && !clubId.trim().isEmpty()) {
-                        return invoice.getClubId().equals(clubId);
-                    }
-                    return true;
-                })
-                .filter(invoice -> {
-                    // Status filter
-                    if (status != null && !status.trim().isEmpty()) {
-                        return invoice.getStatus() != null && invoice.getStatus().equalsIgnoreCase(status);
-                    }
-                    return true;
-                })
-                .filter(invoice -> {
-                    // Issue date range filter
-                    if (issueDateFrom != null && invoice.getIssueDate() != null) {
-                        if (invoice.getIssueDate().isBefore(issueDateFrom)) {
-                            return false;
-                        }
-                    }
-                    if (issueDateTo != null && invoice.getIssueDate() != null) {
-                        if (invoice.getIssueDate().isAfter(issueDateTo)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                })
-                .filter(invoice -> {
-                    // Due date range filter
-                    if (dueDateFrom != null && invoice.getDueDate() != null) {
-                        if (invoice.getDueDate().isBefore(dueDateFrom)) {
-                            return false;
-                        }
-                    }
-                    if (dueDateTo != null && invoice.getDueDate() != null) {
-                        if (invoice.getDueDate().isAfter(dueDateTo)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                })
-                .filter(invoice -> {
-                    // Amount range filter
-                    if (minAmount != null && invoice.getTotalAmount() != null) {
-                        if (invoice.getTotalAmount().compareTo(minAmount) < 0) {
-                            return false;
-                        }
-                    }
-                    if (maxAmount != null && invoice.getTotalAmount() != null) {
-                        if (invoice.getTotalAmount().compareTo(maxAmount) > 0) {
-                            return false;
-                        }
-                    }
-                    return true;
-                })
-                .sorted((invoice1, invoice2) -> {
-                    // Sorting
-                    int comparison = 0;
-                    String field = sortBy != null ? sortBy : "invoiceNumber";
-                    
-                    switch (field.toLowerCase()) {
-                        case "invoicenumber":
-                            comparison = invoice1.getInvoiceNumber().compareToIgnoreCase(invoice2.getInvoiceNumber());
-                            break;
-                        case "clubname":
-                            String club1 = invoice1.getClubName() != null ? invoice1.getClubName() : "";
-                            String club2 = invoice2.getClubName() != null ? invoice2.getClubName() : "";
-                            comparison = club1.compareToIgnoreCase(club2);
-                            break;
-                        case "status":
-                            String status1 = invoice1.getStatus() != null ? invoice1.getStatus() : "";
-                            String status2 = invoice2.getStatus() != null ? invoice2.getStatus() : "";
-                            comparison = status1.compareToIgnoreCase(status2);
-                            break;
-                        case "issuedate":
-                            if (invoice1.getIssueDate() != null && invoice2.getIssueDate() != null) {
-                                comparison = invoice1.getIssueDate().compareTo(invoice2.getIssueDate());
-                            }
-                            break;
-                        case "duedate":
-                            if (invoice1.getDueDate() != null && invoice2.getDueDate() != null) {
-                                comparison = invoice1.getDueDate().compareTo(invoice2.getDueDate());
-                            }
-                            break;
-                        case "totalamount":
-                            if (invoice1.getTotalAmount() != null && invoice2.getTotalAmount() != null) {
-                                comparison = invoice1.getTotalAmount().compareTo(invoice2.getTotalAmount());
-                            }
-                            break;
-                        case "createdat":
-                            if (invoice1.getCreatedAt() != null && invoice2.getCreatedAt() != null) {
-                                comparison = invoice1.getCreatedAt().compareTo(invoice2.getCreatedAt());
-                            }
-                            break;
-                        default:
-                            comparison = invoice1.getInvoiceNumber().compareToIgnoreCase(invoice2.getInvoiceNumber());
-                    }
-                    
-                    return "desc".equalsIgnoreCase(sortDirection) ? -comparison : comparison;
-                })
-                .collect(Collectors.toList());
-        
-        return invoices;
-    }
-    
-    // Update operations
-    public Invoice updateInvoice(String id, Invoice updatedInvoice) {
-        Optional<Invoice> existingInvoiceOpt = invoiceRepository.findById(id);
-        
-        if (existingInvoiceOpt.isEmpty()) {
-            throw new IllegalArgumentException("Invoice not found with id: " + id);
+
+    // ---- Cancellation (creator or club/school/app admin) ----
+
+    @Transactional
+    public InvoiceResponse cancel(Long clubId, Long invoiceId, CancelInvoiceRequest request, String requesterEmail) {
+        Invoice invoice = requireInvoiceInClub(clubId, invoiceId);
+        User requester = requireUser(requesterEmail);
+
+        boolean isOwner = invoice.getCreatedBy().getId().equals(requester.getId());
+        if (!isOwner && !isClubOrSchoolAdmin(invoice.getClub(), requester)) {
+            throw new AppException(HttpStatus.FORBIDDEN, "You do not have permission to cancel this invoice");
         }
-        
-        Invoice existingInvoice = existingInvoiceOpt.get();
-        
-        // Prevent editing APPROVED or REJECTED invoices
-        if ("APPROVED".equals(existingInvoice.getStatus()) || "REJECTED".equals(existingInvoice.getStatus())) {
-            throw new IllegalArgumentException("Cannot edit an invoice that has been " + existingInvoice.getStatus().toLowerCase());
+        if (!CANCELLABLE_STATUSES.contains(invoice.getStatus())) {
+            throw new AppException(HttpStatus.CONFLICT, "This invoice can no longer be cancelled");
         }
-        
-        // Check for duplicate invoice number if changed
-        if (!existingInvoice.getInvoiceNumber().equals(updatedInvoice.getInvoiceNumber())) {
-            if (invoiceRepository.existsByInvoiceNumber(updatedInvoice.getInvoiceNumber())) {
-                throw new IllegalArgumentException("An invoice with number '" + updatedInvoice.getInvoiceNumber() + "' already exists");
-            }
+
+        InvoiceStatus previousStatus = invoice.getStatus();
+        invoice.setStatus(InvoiceStatus.CANCELLED);
+        invoice.setCancelledAt(LocalDateTime.now());
+        invoice.setCancelledBy(requester);
+        invoice.setCancellationReason(request.reason());
+
+        logAudit(invoice, InvoiceAuditAction.CANCELLED, requester, previousStatus, InvoiceStatus.CANCELLED, request.reason());
+        if (!isOwner) {
+            notificationService.notify(invoice.getCreatedBy(), NotificationType.INVOICE_CANCELLED,
+                    invoiceId.toString(),
+                    "Your invoice \"" + invoice.getTitle() + "\" was cancelled"
+                            + (request.reason() != null && !request.reason().isBlank() ? ": " + request.reason() : ""));
         }
-        
-        // Update fields
-        existingInvoice.setInvoiceNumber(updatedInvoice.getInvoiceNumber());
-        existingInvoice.setClubId(updatedInvoice.getClubId());
-        existingInvoice.setClubName(updatedInvoice.getClubName());
-        existingInvoice.setIssueDate(updatedInvoice.getIssueDate());
-        existingInvoice.setDueDate(updatedInvoice.getDueDate());
-        existingInvoice.setStatus(updatedInvoice.getStatus());
-        existingInvoice.setNotes(updatedInvoice.getNotes());
-        existingInvoice.setBillToName(updatedInvoice.getBillToName());
-        existingInvoice.setBillToEmail(updatedInvoice.getBillToEmail());
-        existingInvoice.setBillToAddress(updatedInvoice.getBillToAddress());
-        existingInvoice.setLineItems(updatedInvoice.getLineItems());
-        existingInvoice.setUpdatedAt(LocalDateTime.now());
-        
-        // Update tracking fields if provided
-        if (updatedInvoice.getUpdatedBy() != null) {
-            existingInvoice.setUpdatedBy(updatedInvoice.getUpdatedBy());
-        }
-        if (updatedInvoice.getUpdatedByName() != null) {
-            existingInvoice.setUpdatedByName(updatedInvoice.getUpdatedByName());
-        }
-        
-        // Calculate totals
-        existingInvoice.calculateTotals();
-        
-        return invoiceRepository.save(existingInvoice);
+        return toResponse(invoice);
     }
-    
-    // Delete operations
-    public void deleteInvoice(String id) {
-        Optional<Invoice> invoiceOpt = invoiceRepository.findById(id);
-        
-        if (invoiceOpt.isEmpty()) {
-            throw new IllegalArgumentException("Invoice not found with id: " + id);
+
+    // ---- Helpers ----
+
+    private List<InvoiceLineItem> buildLineItems(Invoice invoice, List<LineItemRequest> requests) {
+        List<InvoiceLineItem> items = new ArrayList<>();
+        int order = 0;
+        for (LineItemRequest r : requests) {
+            BigDecimal totalPrice = r.unitPrice().multiply(BigDecimal.valueOf(r.quantity()));
+            items.add(InvoiceLineItem.builder()
+                    .invoice(invoice)
+                    .lineOrder(order++)
+                    .description(r.description())
+                    .quantity(r.quantity())
+                    .unitPrice(r.unitPrice())
+                    .totalPrice(totalPrice)
+                    .build());
         }
-        
-        Invoice invoice = invoiceOpt.get();
-        
-        // Prevent deleting APPROVED or REJECTED invoices
-        if ("APPROVED".equals(invoice.getStatus()) || "REJECTED".equals(invoice.getStatus())) {
-            throw new IllegalArgumentException("Cannot delete an invoice that has been " + invoice.getStatus().toLowerCase());
-        }
-        
-        invoiceRepository.deleteById(id);
+        return items;
     }
-    
-    // Count operations
-    public long getInvoiceCount() {
-        return invoiceRepository.count();
+
+    private BigDecimal sumTotal(List<InvoiceLineItem> items) {
+        return items.stream().map(InvoiceLineItem::getTotalPrice).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
-    
-    public long getInvoiceCountByClub(String clubId) {
-        return invoiceRepository.countByClubId(clubId);
-    }
-    
-    public long getInvoiceCountByStatus(String status) {
-        return invoiceRepository.countByStatus(status);
-    }
-    
-    /**
-     * Generate invoice number with format: INV-YYYYMMDDHHmm-XXXX-NNNN
-     * INV: Prefix
-     * YYYYMMDDHHmm: Date and time (12 digits)
-     * XXXX: First 4 characters of creator's name (uppercase)
-     * NNNN: Random 4-digit number
-     * Example: INV-202412251430-JOHN-5738
-     */
-    private String generateInvoiceNumber(String createdByName) {
-        // Format: INV-YYYYMMDDHHmm-XXXX-NNNN
-        LocalDateTime now = LocalDateTime.now();
-        String dateTimePart = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
-        
-        // Get first 4 characters of user name (uppercase, remove spaces)
-        String userPart = createdByName.replaceAll("\\s+", "").toUpperCase();
-        if (userPart.length() > 4) {
-            userPart = userPart.substring(0, 4);
-        } else {
-            // Pad with 'X' if less than 4 characters
-            userPart = String.format("%-4s", userPart).replace(' ', 'X');
-        }
-        
-        // Generate 4-digit random number
-        int randomNum = (int)(Math.random() * 9000) + 1000; // Random number between 1000-9999
-        
-        return String.format("INV-%s-%s-%04d", dateTimePart, userPart, randomNum);
-    }
-    
-    // Validation
-    private void validateInvoice(Invoice invoice) {
-        if (invoice == null) {
-            throw new IllegalArgumentException("Invoice cannot be null");
-        }
-        
-        if (invoice.getClubId() == null || invoice.getClubId().trim().isEmpty()) {
-            throw new IllegalArgumentException("Club ID is required");
-        }
-        
-        if (invoice.getClubName() == null || invoice.getClubName().trim().isEmpty()) {
-            throw new IllegalArgumentException("Club name is required");
-        }
-        
-        if (invoice.getLineItems() == null || invoice.getLineItems().isEmpty()) {
-            throw new IllegalArgumentException("At least one line item is required");
-        }
-        
-        // Validate line items
-        for (int i = 0; i < invoice.getLineItems().size(); i++) {
-            var lineItem = invoice.getLineItems().get(i);
-            if (lineItem.getDescription() == null || lineItem.getDescription().trim().isEmpty()) {
-                throw new IllegalArgumentException("Line item " + (i + 1) + " description is required");
-            }
-            if (lineItem.getQuantity() == null || lineItem.getQuantity() <= 0) {
-                throw new IllegalArgumentException("Line item " + (i + 1) + " quantity must be greater than 0");
-            }
-            if (lineItem.getUnitPrice() == null || lineItem.getUnitPrice().compareTo(BigDecimal.ZERO) < 0) {
-                throw new IllegalArgumentException("Line item " + (i + 1) + " unit price must be non-negative");
-            }
+
+    private void requireOwner(Invoice invoice, User requester) {
+        if (!invoice.getCreatedBy().getId().equals(requester.getId())) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Only the invoice creator can perform this action");
         }
     }
-    
-    public boolean invoiceExistsByNumber(String invoiceNumber) {
-        return invoiceRepository.existsByInvoiceNumber(invoiceNumber);
+
+    private void requireStatus(Invoice invoice, InvoiceStatus required, String message) {
+        if (invoice.getStatus() != required) {
+            throw new AppException(HttpStatus.CONFLICT, message);
+        }
     }
-    
-    // Approval-related methods
-    public Optional<Invoice> findById(String id) {
-        return invoiceRepository.findById(id);
+
+    /** APP_ADMIN, SCHOOL_ADMIN of the club's school, or CLUB_ADMIN of this club. */
+    private boolean isClubOrSchoolAdmin(Club club, User user) {
+        if (user.getAppRole() == AppRole.APP_ADMIN) return true;
+
+        var schoolMembership = schoolMembershipRepository
+                .findByUserIdAndSchoolId(user.getId(), club.getSchool().getId())
+                .orElse(null);
+        if (schoolMembership != null
+                && schoolMembership.getStatus() == MembershipStatus.APPROVED
+                && schoolMembership.getRole() == MembershipRole.ADMIN) {
+            return true;
+        }
+
+        var clubMembership = clubMembershipRepository
+                .findByUserIdAndClubId(user.getId(), club.getId())
+                .orElse(null);
+        return clubMembership != null
+                && clubMembership.getStatus() == MembershipStatus.APPROVED
+                && clubMembership.getRole() == MembershipRole.ADMIN;
     }
-    
-    public Invoice save(Invoice invoice) {
-        return invoiceRepository.save(invoice);
+
+    private void notifyClubAdmins(Club club, Invoice invoice, User submitter) {
+        clubMembershipRepository
+                .findByClubIdAndStatusOrderByRequestedAtAsc(club.getId(), MembershipStatus.APPROVED)
+                .stream()
+                .filter(m -> m.getRole() == MembershipRole.ADMIN)
+                .forEach(admin -> notificationService.notify(
+                        admin.getUser(),
+                        NotificationType.INVOICE_SUBMITTED,
+                        invoice.getId().toString(),
+                        submitter.getFirstName() + " " + submitter.getLastName() +
+                                " submitted an invoice for approval: " + invoice.getTitle() +
+                                " ($" + invoice.getTotalAmount() + ")"));
     }
-    
-    public Page<Invoice> getInvoicesByApprovalStatus(String approvalStatus, Pageable pageable) {
-        return invoiceRepository.findByApprovalStatus(approvalStatus, pageable);
+
+    private void logAudit(Invoice invoice, InvoiceAuditAction action, User performedBy,
+                           InvoiceStatus previousStatus, InvoiceStatus newStatus, String note) {
+        InvoiceAuditLog log = InvoiceAuditLog.builder()
+                .invoice(invoice)
+                .action(action)
+                .performedBy(performedBy)
+                .previousStatus(previousStatus)
+                .newStatus(newStatus)
+                .note(note)
+                .build();
+        invoiceAuditLogRepository.save(log);
     }
-    
-    public Page<Invoice> getInvoicesByApprovalStatusAndClubIds(String approvalStatus, List<String> clubIds, Pageable pageable) {
-        return invoiceRepository.findByApprovalStatusAndClubIdIn(approvalStatus, clubIds, pageable);
+
+    private InvoiceResponse toResponse(Invoice invoice) {
+        List<InvoiceAuditLog> auditLogs = invoiceAuditLogRepository.findByInvoiceIdOrderByPerformedAtAsc(invoice.getId());
+        return InvoiceResponse.from(invoice, auditLogs);
+    }
+
+    private Invoice requireInvoiceInClub(Long clubId, Long invoiceId) {
+        Invoice invoice = invoiceRepository.findByIdWithDetails(invoiceId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Invoice not found"));
+        if (!invoice.getClub().getId().equals(clubId)) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Invoice not found");
+        }
+        return invoice;
+    }
+
+    private Club requireClub(Long clubId) {
+        return clubRepository.findById(clubId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Club not found"));
+    }
+
+    private User requireUser(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
     }
 }

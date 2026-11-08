@@ -1,0 +1,239 @@
+name: Dependency remediation
+
+on:
+  workflow_run:
+    workflows:
+      - "Dependency validation"
+      - "CI Tests"
+    types: [completed]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Optional PR number to review and remediate.'
+        required: false
+        type: string
+      risk_classification:
+        description: 'Risk classification for the dependency update.'
+        required: false
+        type: choice
+        options:
+          - LOW
+          - MEDIUM
+          - HIGH
+          - UNKNOWN
+        default: UNKNOWN
+      workflow_conclusion:
+        description: 'Workflow conclusion to evaluate.'
+        required: false
+        type: choice
+        options:
+          - failure
+          - success
+        default: failure
+      dependency_ecosystem:
+        description: 'Ecosystem for the dependency update.'
+        required: false
+        type: string
+        default: maven
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: read
+
+jobs:
+  diagnose-failure:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'issue_comment' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure')
+    runs-on: ubuntu-latest
+    outputs:
+      eligible: ${{ steps.decide.outputs.eligible }}
+      remediation_complexity: ${{ steps.decide.outputs.remediation_complexity }}
+      risk: ${{ steps.decide.outputs.risk }}
+      reason: ${{ steps.decide.outputs.reason }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      issue_title: ${{ steps.pr.outputs.issue_title }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve associated PR
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eventName = context.eventName;
+            const workflowRun = context.payload.workflow_run;
+            let prNumber = '';
+            let issueTitle = 'Dependency remediation required';
+
+            if (eventName === 'workflow_dispatch' && context.payload.inputs?.pr_number) {
+              prNumber = context.payload.inputs.pr_number;
+            } else if (eventName === 'issue_comment' && context.payload.issue?.pull_request) {
+              prNumber = context.payload.issue.number;
+            } else if (workflowRun) {
+              const pulls = workflowRun.pull_requests || [];
+              if (pulls.length > 0) {
+                prNumber = pulls[0].number;
+              }
+            }
+
+            if (prNumber) {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: Number(prNumber),
+              }).catch(() => null);
+
+              if (pr?.data?.title) {
+                issueTitle = pr.data.title;
+              }
+            }
+
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('issue_title', issueTitle);
+
+      - name: Build sanitized dependency diagnostics
+        id: diagnostics
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          WORKFLOW_CONCLUSION: ${{ github.event_name == 'workflow_dispatch' && inputs.workflow_conclusion || github.event.workflow_run.conclusion }}
+          RISK_CLASSIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.risk_classification || 'UNKNOWN' }}
+          DEPENDENCY_ECOSYSTEM: ${{ github.event_name == 'workflow_dispatch' && inputs.dependency_ecosystem || 'maven' }}
+        run: |
+          mkdir -p .artifacts/ai-remediation
+          cat > .artifacts/ai-remediation/diagnostics.json <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "prNumber": "${PR_NUMBER}",
+            "workflowConclusion": "${WORKFLOW_CONCLUSION}",
+            "riskClassification": "${RISK_CLASSIFICATION}",
+            "dependencyEcosystem": "${DEPENDENCY_ECOSYSTEM}",
+            "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "sensitiveDataSanitized": true,
+            "notes": [
+              "Secrets, tokens, and customer data were intentionally omitted from the remediation payload.",
+              "Only dependency metadata, workflow outcome, and repository identifiers were recorded."
+            ]
+          }
+          EOF
+          echo "diagnostics_path=.artifacts/ai-remediation/diagnostics.json" >> "$GITHUB_OUTPUT"
+
+      - name: Determine eligibility and remediation complexity
+        id: decide
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          WORKFLOW_CONCLUSION: ${{ github.event_name == 'workflow_dispatch' && inputs.workflow_conclusion || github.event.workflow_run.conclusion }}
+          RISK_CLASSIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.risk_classification || 'UNKNOWN' }}
+          DEPENDENCY_ECOSYSTEM: ${{ github.event_name == 'workflow_dispatch' && inputs.dependency_ecosystem || 'maven' }}
+        run: |
+          node .github/scripts/ai-remediation-eligibility.js \
+            --pr-number "${PR_NUMBER}" \
+            --workflow-conclusion "${WORKFLOW_CONCLUSION}" \
+            --risk-classification "${RISK_CLASSIFICATION}" \
+            --dependency-ecosystem "${DEPENDENCY_ECOSYSTEM}"
+
+      - name: Upload diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-remediation-diagnostics
+          path: .artifacts/ai-remediation/
+
+  create-remediation-issue:
+    needs: diagnose-failure
+    if: needs.diagnose-failure.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.diagnose-failure.outputs.pr_number }}
+          RISK: ${{ needs.diagnose-failure.outputs.risk }}
+          COMPLEXITY: ${{ needs.diagnose-failure.outputs.remediation_complexity }}
+          REASON: ${{ needs.diagnose-failure.outputs.reason }}
+          TITLE: ${{ needs.diagnose-failure.outputs.issue_title }}
+        with:
+          script: |
+            const title = `${process.env.TITLE} — AI dependency remediation`;
+            const body = [
+              '## AI dependency remediation request',
+              '',
+              `- PR: #${process.env.PR_NUMBER || 'n/a'}`,
+              `- Risk classification: ${process.env.RISK || 'UNKNOWN'}`,
+              `- Complexity: ${process.env.COMPLEXITY || 'human-review'}`,
+              `- Reason: ${process.env.REASON || 'Dependency validation failed and requires remediation review.'}`,
+              '',
+              '### Required remediation instructions',
+              '',
+              '1. Investigate the dependency compatibility failure and reproduce it where possible.',
+              '2. Identify the root cause and propose the smallest safe change.',
+              '3. Preserve existing business behavior and avoid unrelated refactoring.',
+              '4. Do not disable security controls, auth, or authorization checks.',
+              '5. Add or update regression tests for the identified failure.',
+              '6. Run the relevant Phase 1 test suite and the dependency validation gates before requesting merge.',
+              '7. Document the fix and any remaining risks in the PR description.',
+              '',
+              '### Safety constraints',
+              '',
+              '- Secrets, tokens, customer data, and environment values must never be placed in issue or PR content.',
+              '- This repository requires human approval for AI-generated application code changes.',
+              '- If the organization has a supported GitHub Copilot coding-agent integration, it may be used to prepare the fix. Otherwise the issue remains assigned to a human maintainer.',
+              '- Do not bypass branch protection or repository rulesets.'
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['dependencies', 'ai-remediation', 'needs-review'],
+            }).catch(() => {});
+
+  notify-human-review:
+    needs: diagnose-failure
+    if: needs.diagnose-failure.outputs.eligible == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize why the dependency update is blocked
+        shell: bash
+        env:
+          RISK: ${{ needs.diagnose-failure.outputs.risk }}
+          REASON: ${{ needs.diagnose-failure.outputs.reason }}
+          ALERT_EMAIL_RECIPIENTS: ${{ vars.ALERT_EMAIL_RECIPIENTS || secrets.DEPLOY_NOTIFICATION_EMAIL }}
+        run: |
+          echo "Dependency remediation is blocked for human review."
+          echo "Risk: ${RISK}"
+          echo "Reason: ${REASON}"
+          if [[ -n "${ALERT_EMAIL_RECIPIENTS}" ]]; then
+            echo "An email notification can be sent via the configured owner notification channel when the repository is fully configured."
+          fi
+
+  notify-owner:
+    needs: [diagnose-failure, create-remediation-issue]
+    if: always() && (needs.create-remediation-issue.result == 'success' || needs.diagnose-failure.outputs.eligible == 'false')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit sanitized remediation summary
+        shell: bash
+        env:
+          PR_NUMBER: ${{ needs.diagnose-failure.outputs.pr_number }}
+          RISK: ${{ needs.diagnose-failure.outputs.risk }}
+          COMPLEXITY: ${{ needs.diagnose-failure.outputs.remediation_complexity }}
+          REASON: ${{ needs.diagnose-failure.outputs.reason }}
+        run: |
+          echo "Remediation summary for dependency update PR #${PR_NUMBER:-n/a}"
+          echo "Risk: ${RISK:-UNKNOWN}"
+          echo "Complexity: ${COMPLEXITY:-human-review}"
+          echo "Reason: ${REASON:-Dependency validation failed and requires review.}"
+          echo "Details remain sanitized and do not include secrets or customer data."
