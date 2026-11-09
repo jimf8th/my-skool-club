@@ -19,7 +19,7 @@ function harness(overrides = {}) {
     users:{getAuthenticated:async()=>({data:{login:'automation-user'}})},
     repos:{get:async()=>({data:{default_branch:'main'}}),getBranch:async()=>({data:{commit:{sha:'main'}}}),getBranchProtection:async()=>({data:protection})},
     pulls:{list:api('pulls'),get:async()=>({data:pr}),listFiles:api('files'),listReviews:api('reviews'),merge:write('merge'),updateBranch:write('update-branch'),requestReviewers:write('review')},
-    issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix')},
+    issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix'),update:write('close-task')},
     actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
@@ -128,4 +128,14 @@ test('mobile alerts do not create or assign Copilot tasks',async()=>{
   await run({...h,scanAlerts:true});
   assert.equal(h.writes.length,0);
   assert.ok(h.notes.some(note=>note.includes('Open backend/frontend alerts: 0')));
+});
+test('overlapping tasks close only after their alerts disappear and production is verified',async()=>{
+  for (const deployed of [true,false]) {
+    const issue={number:64,state:'open',user:{login:'automation-user'},assignees:[{login:'Copilot',type:'Bot'}],body:'<!-- dependency-scope:backend-frontend --> https://github.com/owner/repo/security/dependabot/10'};
+    const h=harness({pages:{pulls:[],issues:[issue]},deployments:[{id:2,status:deployed?'completed':'in_progress',conclusion:deployed?'success':null}]});
+    const paginate=h.github.paginate;
+    h.github.paginate=async(method,args)=>typeof method === 'string' ? [] : paginate(method,args);
+    await run({...h,scanAlerts:true});
+    assert.deepEqual(h.writes.map(w=>w[0]),deployed?['close-task']:[]);
+  }
 });

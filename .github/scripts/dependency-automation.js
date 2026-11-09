@@ -46,6 +46,11 @@ function taskKey(manifest, name, advisoryIds = []) {
   return createHash('sha256').update(`${manifest}:${name}:${[...advisoryIds].sort().join(',')}`).digest('hex').slice(0, 20);
 }
 
+function issueAlertsResolved(issue, openAlertIds) {
+  const ids = [...(issue.body || '').matchAll(/\/security\/dependabot\/(\d+)/g)].map(match=>Number(match[1]));
+  return ids.length > 0 && ids.every(id=>!openAlertIds.has(id));
+}
+
 async function run({ github, context, core, dryRun = false, scanAlerts = false }) {
   const repo = context.repo;
   const fullName = `${repo.owner}/${repo.repo}`;
@@ -194,7 +199,14 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     }
     record(`Open backend/frontend alerts: ${alerts.length}; affected dependency groups: ${groups.size}. Other manifests are outside this automation's scope.`);
     let started = 0;
-    const activeTasks = trustedIssues.filter(issue => issue.state === 'open');
+    const openAlertIds = new Set(alerts.map(alert=>alert.number));
+    const completedTasks = deploymentReady ? trustedIssues.filter(issue=>issue.state === 'open' && issueAlertsResolved(issue,openAlertIds)) : [];
+    for (const issue of completedTasks) {
+      await mutate(`Close resolved task #${issue.number} after alert and production verification.`, () => github.rest.issues.update({
+        ...repo,issue_number:issue.number,state:'closed',state_reason:'completed',
+      }));
+    }
+    const activeTasks = trustedIssues.filter(issue => issue.state === 'open' && !completedTasks.includes(issue));
     // A failed assignment must not leave a task permanently stranded.
     for (const issue of activeTasks.filter(issue => !issue.assignees.some(isCopilotCoder))) {
       await mutate(`Assign existing dependency task #${issue.number} to Copilot.`, () => github.rest.issues.addAssignees({ ...repo,
@@ -231,4 +243,4 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   await core.summary.addHeading('Dependency automation').addRaw(report.join('\n\n') || 'No eligible updates.').write();
 }
 
-module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS, isCopilotCoder };
+module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved };

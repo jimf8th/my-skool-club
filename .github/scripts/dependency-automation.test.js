@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { classifyRisk } = require('./classify-dependency-risk');
-const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesInScope, ALERT_MANIFESTS, isCopilotCoder } = require('./dependency-automation');
+const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved } = require('./dependency-automation');
 
 const classify = files => classifyRisk({ files, ecosystem: 'npm', updateType: 'patch', packageNames: ['lodash'], hasCriticalSeverity: false, hasSourceChanges: false, changedOutsideManifests: false });
 test('a normal frontend patch can be low risk', () => assert.equal(classify(['frontend/package.json', 'frontend/package-lock.json']).classification, 'LOW'));
@@ -67,6 +67,12 @@ test('task identity groups advisories per manifest/package', () => {
 test('a later advisory gets its own remediation budget',()=>{
   assert.notEqual(taskKey('frontend/package-lock.json','axios',[1]),taskKey('frontend/package-lock.json','axios',[2]));
   assert.equal(taskKey('frontend/package-lock.json','axios',[2,1]),taskKey('frontend/package-lock.json','axios',[1,2]));
+});
+test('a task is not resolved while any linked advisory remains open',()=>{
+  const issue={body:'https://github.com/owner/repo/security/dependabot/10 https://github.com/owner/repo/security/dependabot/11'};
+  assert.equal(issueAlertsResolved(issue,new Set([11])),false);
+  assert.equal(issueAlertsResolved(issue,new Set()),true);
+  assert.equal(issueAlertsResolved({body:'No verified advisory links'},new Set()),false);
 });
 test('only backend and frontend manifests are eligible for alert remediation', () => {
   assert.equal(ALERT_MANIFESTS.has('backend/pom.xml'), true);
