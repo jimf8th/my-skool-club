@@ -85,7 +85,14 @@ test('a failed test run invokes Copilot instead of merging',async()=>{
 });
 test('GitHub approval policy is reported explicitly without calling the fork-only approval API',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'action_required'}]}});
-  await run(h);assert.equal(h.writes.length,0);assert.ok(h.notes.some(note=>note.includes('policy blocks unattended CI')));
+  await assert.rejects(run(h),/automation stopped/);assert.equal(h.writes.length,0);assert.ok(h.notes.some(note=>note.includes('Require approval for workflow runs')));
+});
+test('the first PR error stops processing before another PR can mutate or merge',async()=>{
+  const h=harness({pages:{pulls:[{number:1},{number:2}]}});
+  let reads=0;
+  h.github.rest.pulls.get=async()=>{reads+=1;throw new Error('API unavailable');};
+  await assert.rejects(run(h),/no subsequent mutations/);
+  assert.equal(reads,1);assert.equal(h.writes.length,0);
 });
 test('unresolved review threads block merge',async()=>{
   const h=harness({graph:{reviewThreads:{nodes:[{isResolved:false}],pageInfo:{hasNextPage:false}}}});

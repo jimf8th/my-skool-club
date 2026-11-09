@@ -133,8 +133,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         // GitHub's approval API rejects Copilot runs. The repository policy
         // must allow them natively; never pretend this endpoint can approve it.
         record(`#${pr.number}: configure Copilot Cloud agent > Policies > Require approval for workflow runs = off.`);
-        core.setFailed('Copilot workflow approval policy blocks unattended CI.');
-        continue;
+        throw new Error('Copilot workflow approval policy blocks unattended CI.');
       }
       const jobs = latest?.conclusion === 'success'
         ? await github.paginate(github.rest.actions.listJobsForWorkflowRun, { ...repo, run_id: latest.id, filter: 'latest', per_page: 100 }) : [];
@@ -184,6 +183,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     } catch (error) {
       core.error(`PR #${item.number}: API operation failed (${error.status || error.name}); check setup and permissions.`);
       core.setFailed(`Dependency automation failed for PR #${item.number}.`);
+      throw new Error(`Dependency automation stopped after PR #${item.number} failed; no subsequent mutations are allowed.`);
     }
   }
 
