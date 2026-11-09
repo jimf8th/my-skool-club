@@ -20,11 +20,12 @@ const REQUIRED_JOBS = ['Backend unit and integration tests', 'Frontend unit and 
 
 function reviewDecision(reviews, sha, author) {
   const latest = new Map();
+  const missingAuthorBlock = reviews.some(review => review?.state === 'CHANGES_REQUESTED' && typeof review?.user?.login !== 'string');
   for (const review of reviews.filter(review => typeof review?.user?.login === 'string').sort((a, b) => a.id - b.id)) {
     if (review.state !== 'COMMENTED') latest.set(review.user.login, review);
   }
   const active = [...latest.values()];
-  const blocked = active.some(review => review.state === 'CHANGES_REQUESTED');
+  const blocked = missingAuthorBlock || active.some(review => review.state === 'CHANGES_REQUESTED');
   const approved = active.some(review => review.state === 'APPROVED' && review.commit_id === sha
     && (review.user.login !== author || review.isCopilotCodeReview === true)
     && (isCopilotReview(review) || review.user.type === 'User'));

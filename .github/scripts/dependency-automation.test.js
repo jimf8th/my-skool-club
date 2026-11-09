@@ -37,6 +37,11 @@ test('missing and deleted actor metadata fails closed',()=>{
   for (const actor of [null,undefined,{}, {type:'Bot'}, {type:'Bot',login:null}]) assert.equal(isCopilotCoder(actor),false);
   assert.equal(reviewDecision([null,{user:null,state:'APPROVED',commit_id:'head',isCopilotCodeReview:true}], 'head','author').approved,false);
 });
+test('missing authors cannot hide blocking reviews',()=>{
+  assert.equal(reviewDecision([approval(),{user:null,state:'CHANGES_REQUESTED'}],'head','author').approved,false);
+  assert.equal(reviewDecision([approval(),{user:null,state:'CHANGES_REQUESTED'}],'head','author').blocked,true);
+  assert.equal(reviewDecision([approval(),{user:null,state:'DISMISSED'}],'head','author').approved,true);
+});
 test('the display alias requires GitHub review provenance, even if the author alias matches',()=>{
   const review=approval({user:{login:'Copilot',type:'Bot'}});
   assert.equal(reviewDecision([review],'head','author').approved,false);
