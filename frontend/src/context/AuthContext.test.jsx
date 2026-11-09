@@ -86,6 +86,7 @@ describe('AuthProvider session restoration', () => {
   it('does not authenticate when Firebase reports no user', async () => {
     render(<AuthProvider><Probe /></AuthProvider>);
 
+    await waitFor(() => expect(mocks.authStateHandler.current).not.toBeNull());
     mocks.authStateHandler.current(null);
     await waitFor(() => expect(screen.getByText('signed-out')).toBeInTheDocument());
     expect(mocks.syncSession).not.toHaveBeenCalled();
