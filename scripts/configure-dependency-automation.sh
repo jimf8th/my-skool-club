@@ -50,6 +50,10 @@ if [[ "$MODE" == --apply ]]; then
   gh label create dependency-automation --repo "$AUTOMATION_REPOSITORY" --description 'Tracked dependency remediation task' --color '0366d6' --force
   echo 'Required checks and reviews are enforced. Run the Dependency remediation dry run before --enable.'
 elif [[ "$MODE" == --enable ]]; then
+  gh api "repos/$AUTOMATION_REPOSITORY/copilot/cloud-agent/configuration" > "$TASK_TEMP/copilot.json"
+  node - "$TASK_TEMP/copilot.json" <<'NODE'
+if (require(process.argv[2]).require_actions_workflow_approval !== false) throw new Error('In Settings > Copilot > Cloud agent > Policies, disable Require approval for workflow runs before enabling unattended processing.');
+NODE
   gh api "repos/$AUTOMATION_REPOSITORY/branches/main/protection" > "$TASK_TEMP/current-protection.json"
   node - "$TASK_TEMP/current-protection.json" <<'NODE'
 const p = require(process.argv[2]);
