@@ -20,10 +20,10 @@ function harness(overrides = {}) {
     repos:{get:async()=>({data:{default_branch:'main'}}),getBranchProtection:async()=>({data:protection})},
     pulls:{list:api('pulls'),get:async()=>({data:pr}),listFiles:api('files'),listReviews:api('reviews'),merge:write('merge'),requestReviewers:write('review')},
     issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix')},
-    actions:{listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
+    actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
-  graphql:async()=>({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
+  graphql:async(query)=> query.startsWith('mutation') ? (writes.push(['review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
   paginate:async method => ({
     pulls:[pr], files:[{filename:'frontend/package-lock.json'}], issues:[], comments:[],
     reviews:[{id:1,state:'APPROVED',commit_id:'head',user:{login:REVIEWER,type:'Bot'}}],
@@ -64,6 +64,10 @@ test('without review, request a review and never merge',async()=>{
 test('a failed test run invokes Copilot instead of merging',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});
   await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['fix']);
+});
+test('authorized scoped CI is approved automatically without merging untested code',async()=>{
+  const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'action_required'}]}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['approve-ci']);
 });
 test('unresolved review threads block merge',async()=>{
   const h=harness({graph:{reviewThreads:{nodes:[{isResolved:false}],pageInfo:{hasNextPage:false}}}});

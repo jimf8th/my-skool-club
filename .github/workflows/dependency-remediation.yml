@@ -5,7 +5,7 @@ on:
     workflows: ["CI Tests", "Dependency validation", "Cloud Run Deployment"]
     types: [completed]
   schedule:
-    - cron: '17,47 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:

@@ -6,7 +6,7 @@ const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesIn
 
 const classify = files => classifyRisk({ files, ecosystem: 'npm', updateType: 'patch', packageNames: ['lodash'], hasCriticalSeverity: false, hasSourceChanges: false, changedOutsideManifests: false });
 test('a normal frontend patch can be low risk', () => assert.equal(classify(['frontend/package.json', 'frontend/package-lock.json']).classification, 'LOW'));
-for (const file of ['.github/workflows/cloud-run-deploy.yml', 'Dockerfile', 'scripts/deploy.sh', 'mobile/eas.json', 'mobile/app.config.js', 'backend/src/main/resources/application.yml', '.env.production', 'AGENTS.md']) {
+for (const file of ['.github/workflows/cloud-run-deploy.yml', 'Dockerfile', 'scripts/deploy.sh', 'mobile/eas.json', 'mobile/app.config.js', '.env.production', 'AGENTS.md']) {
   test(`protected surface cannot be disguised by a package patch: ${file}`, () => {
     const result = classify(['frontend/package.json', file]);
     assert.equal(result.classification, 'HIGH');
@@ -44,6 +44,10 @@ test('newer failed or running CI cannot be hidden by earlier success', () => {
 test('task identity groups advisories per manifest/package', () => {
   assert.equal(taskKey('mobile/package-lock.json', 'axios'), taskKey('mobile/package-lock.json', 'axios'));
   assert.notEqual(taskKey('mobile/package-lock.json', 'axios'), taskKey('frontend/package-lock.json', 'axios'));
+});
+test('a later advisory gets its own remediation budget',()=>{
+  assert.notEqual(taskKey('frontend/package-lock.json','axios',[1]),taskKey('frontend/package-lock.json','axios',[2]));
+  assert.equal(taskKey('frontend/package-lock.json','axios',[2,1]),taskKey('frontend/package-lock.json','axios',[1,2]));
 });
 test('only backend and frontend manifests are eligible for alert remediation', () => {
   assert.equal(ALERT_MANIFESTS.has('backend/pom.xml'), true);

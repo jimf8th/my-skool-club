@@ -53,7 +53,9 @@ elif [[ "$MODE" == --enable ]]; then
   gh api "repos/$AUTOMATION_REPOSITORY/branches/main/protection" > "$TASK_TEMP/current-protection.json"
   node - "$TASK_TEMP/current-protection.json" <<'NODE'
 const p = require(process.argv[2]);
-if (!p.required_status_checks?.strict || !p.required_pull_request_reviews?.dismiss_stale_reviews || !p.required_conversation_resolution?.enabled) throw new Error('Run --apply first.');
+const {protectionReady} = require(process.cwd() + '/.github/scripts/dependency-protection');
+const {REQUIRED_JOBS} = require(process.cwd() + '/.github/scripts/dependency-automation');
+if (!protectionReady(p, REQUIRED_JOBS)) throw new Error('Run --apply first.');
 NODE
   gh variable set ENABLE_DEPENDENCY_AUTOMATION --repo "$AUTOMATION_REPOSITORY" --body true
   echo 'Backend/frontend dependency automation enabled. Monitor GitHub Actions.'

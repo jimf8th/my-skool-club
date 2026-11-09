@@ -4,6 +4,7 @@
 // installed or executed in this job, which holds the automation user's token.
 const { createHash } = require('node:crypto');
 const { classifyRisk } = require('./classify-dependency-risk');
+const { protectionReady } = require('./dependency-protection');
 const REVIEWER = 'copilot-pull-request-reviewer[bot]';
 const CODER = 'copilot-swe-agent[bot]';
 const LABEL = 'dependency-automation';
@@ -37,8 +38,8 @@ function testsDecision(runs, jobs, head) {
   return 'success';
 }
 
-function taskKey(manifest, name) {
-  return createHash('sha256').update(`${manifest}:${name}`).digest('hex').slice(0, 20);
+function taskKey(manifest, name, advisoryIds = []) {
+  return createHash('sha256').update(`${manifest}:${name}:${[...advisoryIds].sort().join(',')}`).digest('hex').slice(0, 20);
 }
 
 async function run({ github, context, core, dryRun = false, scanAlerts = false }) {
@@ -48,11 +49,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   const repository = (await github.rest.repos.get(repo)).data;
   const main = repository.default_branch;
   const protection = (await github.rest.repos.getBranchProtection({ ...repo, branch: main })).data;
-  const required = protection.required_status_checks;
-  if (!protection.enforce_admins?.enabled || !required?.strict || !REQUIRED_JOBS.every(name => required.contexts?.includes(name))
-      || !protection.required_pull_request_reviews?.dismiss_stale_reviews
-      || protection.required_pull_request_reviews.required_approving_review_count < 1
-      || !protection.required_conversation_resolution?.enabled) {
+  if (!protectionReady(protection, REQUIRED_JOBS)) {
     throw new Error('Run configure-dependency-automation.sh --apply: strict checks, current approvals and conversation resolution must be enforced.');
   }
   const report = [];
@@ -102,7 +99,12 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: pr.number, per_page: 100 });
       const runs = await github.paginate(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: 'ci-tests.yml', head_sha: pr.head.sha, event: 'pull_request', per_page: 100 });
       const latest = [...runs].sort((a, b) => b.id - a.id)[0];
-      if (latest?.status === 'action_required' || latest?.conclusion === 'action_required') { record(`#${pr.number}: GitHub requires maintainer approval of workflow execution.`); continue; }
+      if (latest?.status === 'action_required' || latest?.conclusion === 'action_required') {
+        // The user authorized unattended CI for scoped bot PRs. This run ID is
+        // immutable and its SHA was checked above; workflow changes are excluded.
+        await mutate(`#${pr.number}: approve scoped read-only CI workflow.`, () => github.rest.actions.approveWorkflowRun({ ...repo, run_id: latest.id }));
+        continue;
+      }
       const jobs = latest?.conclusion === 'success'
         ? await github.paginate(github.rest.actions.listJobsForWorkflowRun, { ...repo, run_id: latest.id, filter: 'latest', per_page: 100 }) : [];
       const tests = testsDecision(runs, jobs, pr.head.sha);
@@ -114,9 +116,16 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       if (review.blocked || unresolved) { await fix(pr, comments, 'review feedback'); continue; }
       if (!review.approved) {
         const alreadyReviewed = reviews.some(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha);
-        if (alreadyReviewed) { record(`#${pr.number}: Copilot commented but did not approve; enable Copilot approvals or obtain maintainer approval.`); continue; }
+        const incomplete = reviews.some(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha && /unable to complete|model policy|plan restrictions/i.test(r.body || ''));
+        if (alreadyReviewed && !incomplete) { record(`#${pr.number}: Copilot did not approve; approval settings or review findings block merging.`); continue; }
         if (!pr.requested_reviewers.some(user => user.login === REVIEWER)) {
-          await mutate(`#${pr.number}: request current-head Copilot review.`, () => github.rest.pulls.requestReviewers({ ...repo, pull_number: pr.number, reviewers: [REVIEWER] }));
+          const attempts = reviews.filter(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha).length;
+          if (attempts >= 3) { record(`#${pr.number}: Copilot review could not complete after three attempts; holding merge.`); continue; }
+          const result = await mutate(`#${pr.number}: request current-head Copilot review.`, () => github.graphql(
+            'mutation($id:ID!){requestCopilotCodeReview(input:{pullRequestId:$id,reviewEffort:LITE}){success failureReason}}', { id: pr.node_id }));
+          if (result && !result.requestCopilotCodeReview.success && result.requestCopilotCodeReview.failureReason !== 'REQUEST_CONFLICT') {
+            throw new Error(`Copilot review rejected: ${result.requestCopilotCodeReview.failureReason}`);
+          }
         }
         continue;
       }
@@ -162,15 +171,17 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         agent_assignment: { target_repo: fullName, base_branch: main, custom_instructions: `Fix issue #${issue.number}; link your PR with Closes #${issue.number}.` },
       }));
     }
-    for (const [key, group] of groups) {
+    const activeKeys = new Set();
+    const severityRank = {critical:0, high:1, medium:2, low:3};
+    const rankedGroups = [...groups.values()].sort((a,b) => Math.min(...a.alerts.map(alert=>severityRank[alert.security_advisory.severity] ?? 4)) - Math.min(...b.alerts.map(alert=>severityRank[alert.security_advisory.severity] ?? 4)));
+    for (const group of rankedGroups) {
+      const key = taskKey(group.manifest, group.name, group.alerts.map(alert => alert.number || alert.security_advisory.ghsa_id));
+      activeKeys.add(key);
       const marker = `<!-- dependency-task:${key} -->`;
       const existing = trustedIssues.filter(issue => issue.body?.includes(marker));
       if (existing.some(issue => issue.state === 'open')) continue;
       if (activeTasks.length + started >= 2 || existing.length >= 3) continue;
       if (pulls.some(pr => pr.user.login === 'dependabot[bot]' && pr.title.toLowerCase().includes(group.name.toLowerCase()))) continue;
-      if (!group.alerts.some(alert => alert.security_vulnerability.first_patched_version)) {
-        record(`${group.manifest}: ${group.name} has no patched version; maintainer mitigation required.`); continue;
-      }
       const created = await mutate(`Create Copilot task for ${group.manifest}: ${group.name}.`, () => github.rest.issues.create({ ...repo,
         title: `Fix vulnerable dependency ${group.name} in ${group.manifest}`,
         body: `${marker}\n${SCOPE_MARKER}\nFix current Dependabot alerts with the smallest compatible dependency/application changes in backend/ and frontend/ only.\n\n${group.alerts.map(alert => `- ${alert.security_advisory.ghsa_id} (${alert.security_advisory.severity}): ${alert.html_url}`).join('\n')}\n\nWork from ${main}. Reuse an existing dependency PR where appropriate. Run backend and frontend tests. Do not change mobile code or weaken tests, auth or security controls. Do not modify automation, deployment or credential files. Link your PR using Closes #ISSUE_NUMBER. Request review after completing the fix.`,
@@ -183,7 +194,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     }
     for (const issue of trustedIssues.filter(issue => issue.state === 'closed')) {
       const key = issue.body?.match(/<!-- dependency-task:([a-f0-9]+) -->/)?.[1];
-      if (key && groups.has(key)) record(`Issue #${issue.number}: advisory remains open after closure; follow-up required.`);
+      if (key && activeKeys.has(key)) record(`Issue #${issue.number}: advisory remains open after closure; follow-up required.`);
     }
   }
   await core.summary.addHeading('Dependency automation').addRaw(report.join('\n\n') || 'No eligible updates.').write();

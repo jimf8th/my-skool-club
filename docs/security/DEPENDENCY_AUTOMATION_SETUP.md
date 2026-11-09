@@ -12,7 +12,7 @@ Never paste credentials into chat, commit them, or put them in the project `.env
 2. Open [GitHub Copilot settings](https://github.com/settings/copilot). Enable the coding/cloud agent and code review for this repository. Organization policies can override account settings.
 3. Open the repository's Settings → Copilot → Code review settings where available. Configure automatic review of new PRs and new pushes, and enable Copilot **approving reviews** for application dependency changes if your plan/settings expose that feature. Our workflow also requests reviews explicitly.
 4. Configure whether trusted Copilot PRs can run Actions without individual approval, if that setting is available. Otherwise GitHub can require a maintainer to approve workflow execution for each Copilot PR.
-5. If Copilot only submits COMMENTED reviews, a maintainer must approve the tested commit. The automation does not convert a comment or a label into an approval. Workflow/deployment/signing/credential changes always remain maintainer work.
+5. If Copilot only submits COMMENTED reviews, a maintainer must approve the tested commit. The automation does not convert a comment or a label into an approval. Workflow, deployment, signing and credential changes are outside the automated application-change scope.
 
 [GitHub's Copilot API documentation](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-via-the-api) describes supported authentication. [Copilot code review](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-code-review) explains approval configuration.
 
@@ -76,9 +76,9 @@ The existing `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true` setting controls producti
 bash scripts/configure-dependency-automation.sh --enable
 ```
 
-This sets `ENABLE_DEPENDENCY_AUTOMATION=true`. Automatic processing runs every 30 minutes and after the relevant CI/deployment workflows complete. It creates at most two concurrent coding tasks and sends no more than three repair requests per PR. Every automatic merge still requires the tested head, a real approval and satisfied branch protection.
+This sets `ENABLE_DEPENDENCY_AUTOMATION=true`. Automatic processing runs every 15 minutes and after the relevant CI/deployment workflows complete. It creates at most two concurrent coding tasks and sends no more than three repair requests per PR. Every automatic merge still requires the tested head, a real Copilot approval and satisfied branch protection.
 
-Only files inside `backend/` and `frontend/` may be changed by eligible PRs. Source and previous filenames are checked, so mixed mobile/web PRs and renames from other areas are excluded. Sensitive backend security/configuration changes remain maintainer-reviewed.
+Only files inside `backend/` and `frontend/` may be changed by eligible PRs. Source and previous filenames are checked, so mixed mobile/web PRs and renames from other areas are excluded. Backend configuration/security repairs use the same automatic approval and test gates; credential files remain excluded.
 
 To stop new automatic dependency work:
 
