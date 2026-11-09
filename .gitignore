@@ -58,6 +58,10 @@ coverage/
 .nyc_output/
 *.lcov
 
+# Frontend browser automation artifacts
+frontend/playwright-report/
+frontend/test-results/
+
 # Generated release and review artifacts
 artifacts/
 

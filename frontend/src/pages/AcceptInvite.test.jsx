@@ -67,4 +67,32 @@ describe('AcceptInvite', () => {
     await waitFor(() => expect(mocks.acceptInvitation).toHaveBeenCalledWith('secure-invitation-token'));
     expect(mocks.navigate).toHaveBeenCalledWith('/', { replace: true });
   });
+
+  it('shows an error when the invitation link is missing required data', async () => {
+    window.location.hash = '';
+    mocks.auth.current = {
+      acceptInvitation: mocks.acceptInvitation,
+      isAuthenticated: false,
+      loading: false,
+      user: null,
+    };
+    render(<AcceptInvite />);
+
+    expect(await screen.findByText('This invitation link is incomplete.')).toBeInTheDocument();
+  });
+
+  it('blocks acceptance until the invited member confirms the policies', async () => {
+    mocks.auth.current = {
+      acceptInvitation: mocks.acceptInvitation,
+      isAuthenticated: true,
+      loading: false,
+      user: { email: 'maya@example.com' },
+    };
+    render(<AcceptInvite />);
+
+    const form = (await screen.findByRole('button', { name: /Accept invitation/i })).closest('form');
+    fireEvent.submit(form);
+
+    expect(await screen.findByText('Confirm that you are at least 13 and accept the policies.')).toBeInTheDocument();
+  });
 });
