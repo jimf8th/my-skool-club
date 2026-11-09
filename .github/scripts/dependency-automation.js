@@ -135,6 +135,13 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const tests = testsDecision(runs, jobs, pr.head.sha);
       if (tests === 'failure') { await fix(pr, comments, 'tests failed'); continue; }
       if (tests !== 'success') { record(`#${pr.number}: waiting for current-head CI (${tests}).`); continue; }
+      if (pr.draft) {
+        // Complete CI before requesting approval; reviewers need a ready PR.
+        // Ready status grants no merge permission: approval and SHA gates follow.
+        await mutate(`#${pr.number}: mark tested draft ready for review.`, () => github.graphql(
+          'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id}}}', { id: pr.node_id }));
+        continue;
+      }
       const reviews = await github.paginate(github.rest.pulls.listReviews, { ...repo, pull_number: pr.number, per_page: 100 });
       const provenReviewIds = new Set((details.reviews?.nodes || []).filter(review=>review.isCopilotCodeReview).map(review=>String(review.fullDatabaseId)));
       for (const review of reviews) review.isCopilotCodeReview = provenReviewIds.has(String(review.id));
@@ -154,11 +161,6 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
             throw new Error(`Copilot review rejected: ${result.requestCopilotCodeReview.failureReason}`);
           }
         }
-        continue;
-      }
-      if (pr.draft) {
-        await mutate(`#${pr.number}: mark tested and approved draft ready.`, () => github.graphql(
-          'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id}}}', { id: pr.node_id }));
         continue;
       }
       if (!pr.mergeable || pr.mergeable_state !== 'clean') {

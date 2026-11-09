@@ -23,7 +23,7 @@ function harness(overrides = {}) {
     actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
-  graphql:async(query)=> query.startsWith('mutation') ? (writes.push(['review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
+  graphql:async(query)=> query.startsWith('mutation') ? (writes.push([query.includes('markPullRequestReadyForReview')?'ready':'review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
   request:write('retry-deployment'),
   paginate:async (method,args) => method.kind === 'runs' && args.workflow_id === 'cloud-run-deploy.yml'
     ? (overrides.deployments || [{id:2,status:'completed',conclusion:'success'}]) : ({
@@ -66,6 +66,10 @@ test('renaming a protected workflow into a manifest cannot bypass policy',async(
 test('without review, request a review and never merge',async()=>{
   const h=harness({pages:{reviews:[]}}); await run(h);
   assert.deepEqual(h.writes.map(w=>w[0]),['review']);
+});
+test('tested drafts become ready for review without granting merge permission',async()=>{
+  const h=harness({pr:{draft:true},pages:{reviews:[]}});await run(h);
+  assert.deepEqual(h.writes.map(w=>w[0]),['ready']);
 });
 test('a failed test run invokes Copilot instead of merging',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});
