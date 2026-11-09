@@ -59,6 +59,14 @@ test('actual REST Copilot author alias is accepted only with a trusted scoped ta
   const h=harness({pr:{user:{login:'Copilot',type:'Bot'}},pages:{issues:[{number:64,user:{login:'automation-user'},body:'<!-- dependency-scope:backend-frontend -->'}]},graph:{closingIssuesReferences:{nodes:[{number:64}]}}});
   await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['merge','delete']);
 });
+test('shared Copilot reviewer alias is correlated with live GraphQL review provenance',async()=>{
+  const h=harness({pr:{user:{login:'Copilot',type:'Bot'}},pages:{issues:[{number:64,user:{login:'automation-user'},body:'<!-- dependency-scope:backend-frontend -->'}],reviews:[{id:5820605212,user:{login:'Copilot',type:'Bot'},state:'APPROVED',commit_id:'head'}]},graph:{closingIssuesReferences:{nodes:[{number:64}]},reviews:{nodes:[{fullDatabaseId:'5820605212',isCopilotCodeReview:true}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['merge','delete']);
+});
+test('a different provenance ID cannot approve a shared bot alias',async()=>{
+  const h=harness({pages:{reviews:[{id:2,user:{login:'Copilot',type:'Bot'},state:'APPROVED',commit_id:'head'}]},graph:{reviews:{nodes:[{fullDatabaseId:'1',isCopilotCodeReview:true}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['review']);
+});
 test('renaming a protected workflow into a manifest cannot bypass policy',async()=>{
   const h=harness({pages:{files:[{filename:'frontend/package.json',previous_filename:'.github/workflows/ci-tests.yml'}]}});
   await run(h); assert.equal(h.writes.length,0);
