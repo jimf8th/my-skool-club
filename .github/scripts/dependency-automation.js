@@ -51,6 +51,16 @@ function issueAlertsResolved(issue, openAlertIds) {
   return ids.length > 0 && ids.every(id=>!openAlertIds.has(id));
 }
 
+function outdatedMachineThread(thread, head) {
+  if (!thread || !Array.isArray(thread.comments?.nodes)) return false;
+  const comments = thread.comments;
+  return !thread.isResolved && thread.isOutdated === true && comments?.pageInfo?.hasNextPage === false
+    && comments.nodes.length > 0 && comments.nodes.every(comment => {
+      const review = comment?.pullRequestReview;
+      return review?.isCopilotCodeReview === true && typeof review.commit?.oid === 'string' && review.commit.oid !== head;
+    });
+}
+
 async function run({ github, context, core, dryRun = false, scanAlerts = false }) {
   const repo = context.repo;
   const fullName = `${repo.owner}/${repo.repo}`;
@@ -106,7 +116,9 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         repository(owner:$owner,name:$repo) { pullRequest(number:$number) {
           closingIssuesReferences(first:100) { nodes { number } }
           reviews(last:100) { nodes { fullDatabaseId isCopilotCodeReview } }
-          reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } }
+          reviewThreads(first:100) { nodes { id isResolved isOutdated comments(first:100) {
+            nodes { pullRequestReview { isCopilotCodeReview commit { oid } } } pageInfo { hasNextPage }
+          } } pageInfo { hasNextPage } }
         } }
       }`, { ...repo, number: pr.number });
       const details = graph.repository.pullRequest;
@@ -151,7 +163,8 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const provenReviewIds = new Set((details.reviews?.nodes || []).filter(review=>review.isCopilotCodeReview).map(review=>String(review.fullDatabaseId)));
       for (const review of reviews) review.isCopilotCodeReview = provenReviewIds.has(String(review.id));
       const review = reviewDecision(reviews, pr.head.sha, pr.user.login);
-      const unresolved = details.reviewThreads.pageInfo.hasNextPage || details.reviewThreads.nodes.some(thread => !thread.isResolved);
+      const retireable = details.reviewThreads.nodes.filter(thread=>outdatedMachineThread(thread,pr.head.sha));
+      const unresolved = details.reviewThreads.pageInfo.hasNextPage || details.reviewThreads.nodes.some(thread => !thread.isResolved && !retireable.includes(thread));
       if (review.blocked || unresolved) { await fix(pr, comments, 'review feedback'); continue; }
       if (!review.approved) {
         const alreadyReviewed = reviews.some(r => isCopilotReview(r) && r.commit_id === pr.head.sha);
@@ -160,12 +173,19 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         if (!pr.requested_reviewers.some(user => user?.login === REVIEWER)) {
           const attempts = reviews.filter(r => isCopilotReview(r) && r.commit_id === pr.head.sha).length;
           if (attempts >= 3) { record(`#${pr.number}: Copilot review could not complete after three attempts; holding merge.`); continue; }
-          const result = await mutate(`#${pr.number}: request current-head Copilot review.`, () => github.graphql(
-            'mutation($id:ID!){requestCopilotCodeReview(input:{pullRequestId:$id,reviewEffort:LITE}){success failureReason}}', { id: pr.node_id }));
+          const effort = attempts === 0 ? 'LITE' : 'BALANCED';
+          const result = await mutate(`#${pr.number}: request current-head Copilot review (${effort}).`, () => github.graphql(
+            'mutation($id:ID!,$effort:CopilotCodeReviewEffort!){requestCopilotCodeReview(input:{pullRequestId:$id,reviewEffort:$effort}){success failureReason}}', { id: pr.node_id,effort }));
           if (result && !result.requestCopilotCodeReview.success && result.requestCopilotCodeReview.failureReason !== 'REQUEST_CONFLICT') {
             throw new Error(`Copilot review rejected: ${result.requestCopilotCodeReview.failureReason}`);
           }
         }
+        continue;
+      }
+      if (retireable.length) {
+        for (const thread of retireable) await mutate(`#${pr.number}: resolve outdated machine feedback after current-head approval.`, () => github.graphql(
+          'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}',{id:thread.id}));
+        // Native conversation protection and mergeability are re-read next run.
         continue;
       }
       if (!pr.mergeable || pr.mergeable_state !== 'clean') {
@@ -243,4 +263,4 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   await core.summary.addHeading('Dependency automation').addRaw(report.join('\n\n') || 'No eligible updates.').write();
 }
 
-module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved };
+module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved, outdatedMachineThread };
