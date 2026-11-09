@@ -4,7 +4,7 @@ This guide configures `jimf8th/my-skool-club` for Dependabot alerts → Copilot 
 
 The implementation must first be merged and validated on `main`. Creating a token alone does not activate it. During setup keep `ENABLE_DEPENDENCY_AUTOMATION` unset or `false`.
 
-Never paste credentials into chat, commit them, or put them in the project `.env`. The GitHub and Expo tokens go into repository **Actions secrets**; Apple submission keys are stored with Expo's app credentials. Keep recovery copies in a password manager.
+Never paste credentials into chat, commit them, or put them in the project `.env`. The GitHub token goes into repository **Actions secrets**. Backend/frontend automation needs no Expo, Apple or Google Play credentials. Keep recovery copies in a password manager.
 
 ## 1. Enable Copilot for the GitHub account and repository
 
