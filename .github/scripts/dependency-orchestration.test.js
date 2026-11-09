@@ -55,6 +55,10 @@ test('unrelated Copilot PR is not treated as a dependency task',async()=>{
   const h=harness({pr:{user:{login:'copilot-swe-agent[bot]'}}});
   await run(h); assert.equal(h.writes.length,0);
 });
+test('actual REST Copilot author alias is accepted only with a trusted scoped task',async()=>{
+  const h=harness({pr:{user:{login:'Copilot',type:'Bot'}},pages:{issues:[{number:64,user:{login:'automation-user'},body:'<!-- dependency-scope:backend-frontend -->'}]},graph:{closingIssuesReferences:{nodes:[{number:64}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['merge','delete']);
+});
 test('renaming a protected workflow into a manifest cannot bypass policy',async()=>{
   const h=harness({pages:{files:[{filename:'frontend/package.json',previous_filename:'.github/workflows/ci-tests.yml'}]}});
   await run(h); assert.equal(h.writes.length,0);
