@@ -2,7 +2,11 @@
   "defaults": {
     "unknownRisk": "HIGH",
     "maxAutoMergeRisk": "LOW",
-    "manualApprovalRequiredFor": ["minor", "major", "multiple"],
+    "manualApprovalRequiredFor": [
+      "minor",
+      "major",
+      "multiple"
+    ],
     "autoMergeRequiresNoSourceChanges": true,
     "autoMergeRequiresAllChecks": true
   },
@@ -62,5 +66,13 @@
         "security advisory severity is critical or high"
       ]
     }
+  },
+  "reviewedMerge": {
+    "requireCurrentHeadApproval": true,
+    "requireAllCurrentHeadTests": true,
+    "allowCopilotApprovingReviews": true,
+    "protectedChangesRequireMaintainer": true,
+    "maxFixAttemptsPerPullRequest": 3,
+    "maxConcurrentCopilotIssues": 2
   }
 }

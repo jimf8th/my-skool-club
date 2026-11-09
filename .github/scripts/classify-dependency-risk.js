@@ -121,7 +121,11 @@ function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalS
     policy.sensitivePackages.some((sensitive) => isSensitivePackageMatch(name, sensitive))
   );
   const multiDependency = packageNames.length > 1;
-  const manifestOnly = files.every((file) => /package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|pom\.xml|Dockerfile|docker-compose|\.ya?ml|lock$|\.lock/.test(file));
+  const allowedManifests = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json']);
+  const protectedPatterns = [/^mobile\//, /^\.github\//, /^\.agents\//, /^\.codex\//, /(^|\/)AGENTS\.md$/, /(^|\/)SKILL\.md$/, /^scripts\//, /^Dockerfile(?:\.|$)/, /^docker-compose/, /^cloud-run/, /(^|\/)\.(env|gitignore|dockerignore|easignore)/, /\.(pem|p8|key|jks|keystore)$/, /^mobile\/(\.eas\/|eas\.json|app\.(json|config\.js)|config\/)/];
+  const protectedFiles = files.filter(file => protectedPatterns.some(pattern => pattern.test(file)));
+  const requiresMaintainer = protectedFiles.length > 0 || files.length === 0;
+  const manifestOnly = files.length > 0 && files.every(file => allowedManifests.has(file));
 
   let risk = 'HIGH';
   let reasons = [];
@@ -130,7 +134,7 @@ function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalS
     reasons.push('security advisory severity is high or critical');
   }
 
-  if (updateType === 'major' || sensitivePackage || hasSourceChanges || changedOutsideManifests || ecosystem === 'docker') {
+  if (hasCriticalSeverity || requiresMaintainer || updateType === 'major' || sensitivePackage || hasSourceChanges || changedOutsideManifests || ecosystem === 'docker') {
     risk = 'HIGH';
     reasons.push('major version, security-sensitive dependency, source code change, or deployment/runtime change is present');
   } else if (updateType === 'minor' || multiDependency || !manifestOnly) {
@@ -153,6 +157,8 @@ function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalS
   const autoMergeEligible = toRiskRank(risk) <= toRiskRank(maxAutoMergeRisk);
   return {
     classification: risk,
+    protectedFiles,
+    requiresMaintainer,
     autoMergeEligible,
     ecosystem,
     updateType,
@@ -196,4 +202,5 @@ function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-main();
+if (require.main === module) main();
+module.exports = { classifyRisk, isSourceChange, normalizeUpdateType };

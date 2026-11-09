@@ -1,70 +1,30 @@
-# Dependency Automation
+# Backend and frontend dependency automation
 
-## Repository dependency surfaces
+Follow [the setup guide](DEPENDENCY_AUTOMATION_SETUP.md) before enabling unattended processing. The [historical audit](DEPENDENCY_AUTOMATION_AUDIT.md) records the state before implementation and before the owner excluded mobile releases.
 
-This monorepo contains the following dependency manifests and lockfiles:
+## Scope and execution
 
-- Backend: `backend/pom.xml`
-- Frontend: `frontend/package.json` and `frontend/package-lock.json`
-- Mobile: `mobile/package.json` and `mobile/package-lock.json`
-- Container image: `Dockerfile`
-- Local services: `docker-compose.yml`
-- Deployment config: `cloud-run-service.yaml`
-- GitHub automation: `.github/workflows/`
+- Dependabot version updates cover Maven under `/backend` and npm under `/frontend`.
+- Alert remediation accepts only `backend/pom.xml`, `frontend/package.json`, and `frontend/package-lock.json`. GitHub may continue to show alerts for other manifests; those are excluded from this automation.
+- Automatic remediation, review and merge require every changed path (including the previous path of a renamed file) to remain inside `backend/` or `frontend/`. Mobile, infrastructure, Docker and GitHub Actions updates are outside this scope.
+- Pull-request CI has read-only access. The shared repository CI retains its existing backend, frontend, browser, mobile Jest and security regression checks, plus automation policy tests. It needs no Expo or app-store credentials.
+- Dependency remediation executes trusted default-branch code after CI completes and every 15 minutes. It never checks out or executes PR code with the automation token.
+- A Copilot-capable user token groups scoped alerts by manifest/package and creates at most two concurrent coding tasks. Failed eligible PRs receive at most three repair requests, once per head commit.
+- Copilot PRs must link to a scoped task created by that automation identity. Unrelated and fork PRs are skipped.
+- Every automatic merge requires all six CI jobs on the current head, an actual current-head Copilot approval, no changes requested, resolved threads, clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition. Behind-main branches are refreshed automatically for new tests and review; scoped CI approval requests are handled automatically.
+- Backend configuration and security repairs within scope use the same automated review and test gates. Credential files remain excluded. Unknown risk is never classified as a low-risk patch.
+- User-token merges emit the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and checks health. Deployments are serialized per branch. Further merges wait for successful production verification; failed deployment jobs retry up to three attempts.
 
-## Existing Phase 1 test integration
+## Configuration
 
-The repository already includes the Phase 1 validation pipeline in `.github/workflows/ci-tests.yml` for:
+Required repository Actions secret: `DEPENDENCY_AUTOMATION_TOKEN`. No Expo, Apple or Google Play setup is required for this scope.
 
-- backend Maven unit and API regression checks
-- frontend Vitest tests
-- Playwright smoke tests
-- mobile Jest suite
-- security scans via CodeQL and dependency review
+`ENABLE_DEPENDENCY_AUTOMATION` defaults to disabled. `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY` governs the existing backend/frontend rollout.
 
-This Phase 2 automation reuses that workflow rather than creating a parallel testing implementation.
+Run `bash scripts/configure-dependency-automation.sh --check`, then `--apply` after the implementation passes on main. Validate the dry run and one controlled Copilot change before `--enable`. Use `--disable` to stop new unattended work.
 
-## Dependency risk themes in this repo
+## Validation
 
-The highest-risk dependency classes are:
+Run `node --test .github/scripts/*.test.js` and actionlint. Tests cover scope filtering, protected changes and renames, stale/dismissed reviews, changes requested, exact-head CI, forks, unrelated agent PRs, bounded same-head remediation and atomic merging.
 
-- Spring Boot and Spring Security for authz/authn
-- Firebase Admin and Firebase client libraries for identity/session management
-- PostgreSQL and Flyway drivers for database persistence and migrations
-- OpenAI integration and runtime mail configuration
-- Docker and deployment config for Cloud Run
-
-## Dependabot configuration
-
-Dependabot is configured in `.github/dependabot.yml` to monitor:
-
-- Maven updates under `/backend`
-- npm updates under `/frontend`
-- npm updates under `/mobile`
-- GitHub Actions updates at the repo root
-- Docker image updates at the repo root
-
-Patch updates are grouped by ecosystem to reduce PR noise, while major updates remain isolated and manual review is required.
-
-## Security-update behavior
-
-Security alerts from Dependabot are separate from scheduled version updates. Dependabot security updates are driven by GitHub advisory data and repository security settings; they are not fully controlled by `dependabot.yml` alone. The workflow and repo settings must still enable security updates and alerts.
-
-## Manual settings required in GitHub
-
-The repository owner must enable the following before production use:
-
-- Dependabot alerts
-- Dependabot security updates
-- GitHub Actions read/write permissions for PR automation
-- Branch protection or repository ruleset status checks
-- GitHub auto-merge support for low-risk PRs
-- Optional Copilot coding-agent support for remediation tasks
-- Email or notification provider, if email delivery is needed
-
-## Important guardrails
-
-- No production deployment is introduced as part of this automation.
-- No `pull_request_target` workflow is used for untrusted PR code.
-- Low-risk updates are the only ones eligible for native auto-merge.
-- Medium- and high-risk updates remain manual.
+Verify the matching advisory closes on the default branch after a merge. Passing CI or deployment alone does not establish that a vulnerable dependency was removed.

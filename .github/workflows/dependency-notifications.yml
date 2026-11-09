@@ -36,13 +36,10 @@ jobs:
               'Review the run logs and PR status before merging or redeploying any dependency update.'
             ].join('\n');
 
-            core.summary.addRaw(body).write();
+            await core.summary.addRaw(body).write();
 
-            if (context.payload.pull_request) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body,
-              }).catch(() => {});
+            for (const pull of workflow?.pull_requests || []) {
+              const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number:pull.number});
+              if (!['dependabot[bot]', 'copilot-swe-agent[bot]'].includes(pr.user.login)) continue;
+              await github.rest.issues.createComment({...context.repo, issue_number:pull.number, body});
             }
