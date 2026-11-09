@@ -17,14 +17,16 @@ function harness(overrides = {}) {
     required_conversation_resolution:{enabled:true}, ...overrides.protection };
   const github = { rest: {
     users:{getAuthenticated:async()=>({data:{login:'automation-user'}})},
-    repos:{get:async()=>({data:{default_branch:'main'}}),getBranchProtection:async()=>({data:protection})},
-    pulls:{list:api('pulls'),get:async()=>({data:pr}),listFiles:api('files'),listReviews:api('reviews'),merge:write('merge'),requestReviewers:write('review')},
+    repos:{get:async()=>({data:{default_branch:'main'}}),getBranch:async()=>({data:{commit:{sha:'main'}}}),getBranchProtection:async()=>({data:protection})},
+    pulls:{list:api('pulls'),get:async()=>({data:pr}),listFiles:api('files'),listReviews:api('reviews'),merge:write('merge'),updateBranch:write('update-branch'),requestReviewers:write('review')},
     issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix')},
     actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
   graphql:async(query)=> query.startsWith('mutation') ? (writes.push(['review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
-  paginate:async method => ({
+  request:write('retry-deployment'),
+  paginate:async (method,args) => method.kind === 'runs' && args.workflow_id === 'cloud-run-deploy.yml'
+    ? (overrides.deployments || [{id:2,status:'completed',conclusion:'success'}]) : ({
     pulls:[pr], files:[{filename:'frontend/package-lock.json'}], issues:[], comments:[],
     reviews:[{id:1,state:'APPROVED',commit_id:'head',user:{login:REVIEWER,type:'Bot'}}],
     runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'success'}],
@@ -77,8 +79,18 @@ test('same-head remediation requests are idempotent',async()=>{
   const h=harness({pages:{reviews:[],comments:[{user:{login:'automation-user'},body:'<!-- dependency-fix:head -->'}],runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});
   await run(h); assert.equal(h.writes.length,0);
 });
-test('behind-main branches cannot merge despite passing previous tests',async()=>{
-  const h=harness({pr:{mergeable_state:'behind'}}); await run(h); assert.equal(h.writes.length,0);
+test('behind-main branches are updated for fresh CI and never merged with stale tests',async()=>{
+  const h=harness({pr:{mergeable_state:'behind'}}); await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['update-branch']);
+  assert.equal(h.writes[0][1].expected_head_sha,'head');
+});
+test('pending deployments prevent another merge',async()=>{
+  const h=harness({deployments:[{id:2,status:'in_progress',conclusion:null}]}); await run(h); assert.equal(h.writes.length,0);
+});
+test('failed production deployment is retried without merging more code',async()=>{
+  const h=harness({deployments:[{id:2,status:'completed',conclusion:'failure',run_attempt:1}]}); await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['retry-deployment']);
+});
+test('deployment retry budget is bounded',async()=>{
+  const h=harness({deployments:[{id:2,status:'completed',conclusion:'failure',run_attempt:3}]}); await run(h); assert.equal(h.writes.length,0);
 });
 test('admin bypass or disabled strict checks stop orchestration',async()=>{
   const h=harness({protection:{enforce_admins:{enabled:false}}});

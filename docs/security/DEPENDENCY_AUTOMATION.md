@@ -11,9 +11,9 @@ Follow [the setup guide](DEPENDENCY_AUTOMATION_SETUP.md) before enabling unatten
 - Dependency remediation executes trusted default-branch code after CI completes and every 15 minutes. It never checks out or executes PR code with the automation token.
 - A Copilot-capable user token groups scoped alerts by manifest/package and creates at most two concurrent coding tasks. Failed eligible PRs receive at most three repair requests, once per head commit.
 - Copilot PRs must link to a scoped task created by that automation identity. Unrelated and fork PRs are skipped.
-- Every automatic merge requires all six CI jobs on the current head, an actual current-head Copilot approval, no changes requested, resolved threads, clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition.
+- Every automatic merge requires all six CI jobs on the current head, an actual current-head Copilot approval, no changes requested, resolved threads, clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition. Behind-main branches are refreshed automatically for new tests and review; scoped CI approval requests are handled automatically.
 - Backend configuration and security repairs within scope use the same automated review and test gates. Credential files remain excluded. Unknown risk is never classified as a low-risk patch.
-- User-token merges emit the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and checks health. Deployments are serialized per branch.
+- User-token merges emit the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and checks health. Deployments are serialized per branch. Further merges wait for successful production verification; failed deployment jobs retry up to three attempts.
 
 ## Configuration
 

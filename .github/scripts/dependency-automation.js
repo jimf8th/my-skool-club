@@ -62,6 +62,19 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user.login === viewer
     && issue.body?.includes(SCOPE_MARKER));
   const pulls = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', base: main, per_page: 100 });
+  const mainSha = (await github.rest.repos.getBranch({ ...repo, branch: main })).data.commit.sha;
+  const deployments = await github.paginate(github.rest.actions.listWorkflowRuns, {
+    ...repo, workflow_id:'cloud-run-deploy.yml', head_sha:mainSha, event:'push', per_page:100,
+  });
+  const deployment = [...deployments].sort((a,b)=>b.id-a.id)[0];
+  const deploymentReady = deployment?.status === 'completed' && deployment.conclusion === 'success';
+  if (!deploymentReady) {
+    record(`Main ${mainSha}: deployment ${deployment?.conclusion || deployment?.status || 'pending'}; new merges wait for production verification.`);
+    if (deployment?.status === 'completed' && ['failure','timed_out'].includes(deployment.conclusion) && (deployment.run_attempt || 1) < 3) {
+      await mutate(`Retry failed deployment jobs for main ${mainSha}.`, () => github.request(
+        'POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs', {...repo,run_id:deployment.id}));
+    }
+  }
 
   async function fix(pr, comments, reason) {
     const previous = comments.filter(comment => comment.user.login === viewer && comment.body.includes('<!-- dependency-fix:'));
@@ -97,6 +110,13 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const risk = classifyRisk({ files: files.flatMap(file => [file.filename, file.previous_filename].filter(Boolean)), ecosystem: 'unknown', updateType: 'unknown', packageNames: [], hasSourceChanges: false, changedOutsideManifests: false });
       if (risk.requiresMaintainer) { record(`#${pr.number}: maintainer review required for protected configuration.`); continue; }
       const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: pr.number, per_page: 100 });
+      if (pr.mergeable_state === 'behind') {
+        await mutate(`#${pr.number}: update branch against current main for fresh tests and review.`, () => github.rest.pulls.updateBranch({
+          ...repo,pull_number:pr.number,expected_head_sha:pr.head.sha,
+        }));
+        continue;
+      }
+      if (pr.mergeable_state === 'dirty') { await fix(pr,comments,'merge conflict with current main'); continue; }
       const runs = await github.paginate(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: 'ci-tests.yml', head_sha: pr.head.sha, event: 'pull_request', per_page: 100 });
       const latest = [...runs].sort((a, b) => b.id - a.id)[0];
       if (latest?.status === 'action_required' || latest?.conclusion === 'action_required') {
@@ -137,6 +157,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       if (!pr.mergeable || pr.mergeable_state !== 'clean') {
         record(`#${pr.number}: merge state ${pr.mergeable_state}; waiting for a clean, current branch.`); continue;
       }
+      if (!deploymentReady) continue;
       const result = await mutate(`#${pr.number}: squash-merge reviewed, tested head ${pr.head.sha}.`, () => github.rest.pulls.merge({ ...repo, pull_number: pr.number, sha: pr.head.sha, merge_method: 'squash' }));
       if (result && !result.data.merged) throw new Error('GitHub declined merge');
       // A user token emits main's push event. Never dispatch a duplicate release.

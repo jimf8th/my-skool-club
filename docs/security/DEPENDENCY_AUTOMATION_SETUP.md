@@ -69,7 +69,7 @@ The existing `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true` setting controls producti
 1. In GitHub → Actions → Dependency remediation → Run workflow, select main, `dry_run=true` and `scan_alerts=true`.
 2. Confirm the run can inspect scoped alerts, PRs and branch protection without permission failures. A dry run creates no issues, agent tasks, review requests or merges.
 3. Verify Copilot can be assigned one controlled backend/frontend task and can approve the resulting tested head. Read-only inspection cannot prove subscription entitlements or write operations.
-4. If Copilot only comments, enable approving reviews where offered or obtain a maintainer approval. If GitHub requires approval to start Copilot PR workflows, configure the supported automatic-run setting or approve those runs individually.
+4. If Copilot only comments, enable approving reviews where offered or obtain a maintainer approval. The orchestrator approves waiting CI runs only after verifying the trusted bot, exact head, unchanged workflow files and backend/frontend-only scope.
 5. Once validated, run:
 
 ```bash
@@ -94,6 +94,6 @@ Watch GitHub Actions → Dependency remediation for the task and review decision
 
 After the reviewed PR merges, its user-token push starts Cloud Run Deployment. Verify image publication, staging health, the migration job, production deployment and production health. The container includes both the backend and compiled frontend.
 
-Confirm the corresponding backend/frontend advisory closes on main after GitHub rescans it. A successful build or deployment alone does not prove a vulnerable dependency was removed. Alerts without a patched version remain visible for maintainer mitigation.
+Confirm the corresponding backend/frontend advisory closes on main after GitHub rescans it. A successful build or deployment alone does not prove a vulnerable dependency was removed. Alerts without a patched version are assigned for compatible upgrade/replacement investigation. Unvalidated or unresolvable fixes remain blocked rather than being merged.
 
 If a token expires, replace `DEPENDENCY_AUTOMATION_TOKEN` on the Actions secrets page. If the automation identity changes, migrate its tracked issues: the orchestrator deliberately trusts scoped tasks created by the configured automation user.
