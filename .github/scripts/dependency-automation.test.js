@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { classifyRisk } = require('./classify-dependency-risk');
-const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesInScope, ALERT_MANIFESTS } = require('./dependency-automation');
+const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved } = require('./dependency-automation');
 
 const classify = files => classifyRisk({ files, ecosystem: 'npm', updateType: 'patch', packageNames: ['lodash'], hasCriticalSeverity: false, hasSourceChanges: false, changedOutsideManifests: false });
 test('a normal frontend patch can be low risk', () => assert.equal(classify(['frontend/package.json', 'frontend/package-lock.json']).classification, 'LOW'));
@@ -28,6 +28,25 @@ test('dismissal overrides old approval', () => assert.equal(reviewDecision([appr
 test('changes requested are not erased by comments', () => assert.equal(reviewDecision([approval({ state: 'CHANGES_REQUESTED' }), approval({ id: 2, state: 'COMMENTED' })], 'head', 'author').blocked, true));
 test('authors cannot approve themselves', () => assert.equal(reviewDecision([approval({ user: { login: 'author', type: 'User' } })], 'head', 'author').approved, false));
 test('another bot cannot provide an approval', () => assert.equal(reviewDecision([approval({ user: { login: 'some-bot', type: 'Bot' } })], 'head', 'author').approved, false));
+test('REST Copilot bot aliases are recognized without trusting a user account',()=>{
+  assert.equal(isCopilotCoder({login:'Copilot',type:'Bot'}),true);
+  assert.equal(isCopilotCoder({login:'Copilot',type:'User'}),false);
+  assert.equal(isCopilotCoder({login:'copilot-swe-agent[bot]',type:'Bot'}),true);
+});
+test('missing and deleted actor metadata fails closed',()=>{
+  for (const actor of [null,undefined,{}, {type:'Bot'}, {type:'Bot',login:null}]) assert.equal(isCopilotCoder(actor),false);
+  assert.equal(reviewDecision([null,{user:null,state:'APPROVED',commit_id:'head',isCopilotCodeReview:true}], 'head','author').approved,false);
+});
+test('missing authors cannot hide blocking reviews',()=>{
+  assert.equal(reviewDecision([approval(),{user:null,state:'CHANGES_REQUESTED'}],'head','author').approved,false);
+  assert.equal(reviewDecision([approval(),{user:null,state:'CHANGES_REQUESTED'}],'head','author').blocked,true);
+  assert.equal(reviewDecision([approval(),{user:null,state:'DISMISSED'}],'head','author').approved,true);
+});
+test('the display alias requires GitHub review provenance, even if the author alias matches',()=>{
+  const review=approval({user:{login:'Copilot',type:'Bot'}});
+  assert.equal(reviewDecision([review],'head','author').approved,false);
+  assert.equal(reviewDecision([{...review,isCopilotCodeReview:true}],'head','Copilot').approved,true);
+});
 
 const run = { id: 1, name: 'CI Tests', event: 'pull_request', status: 'completed', conclusion: 'success', head_sha: 'head' };
 const jobs = REQUIRED_JOBS.map(name => ({ name, conclusion: 'success' }));
@@ -48,6 +67,12 @@ test('task identity groups advisories per manifest/package', () => {
 test('a later advisory gets its own remediation budget',()=>{
   assert.notEqual(taskKey('frontend/package-lock.json','axios',[1]),taskKey('frontend/package-lock.json','axios',[2]));
   assert.equal(taskKey('frontend/package-lock.json','axios',[2,1]),taskKey('frontend/package-lock.json','axios',[1,2]));
+});
+test('a task is not resolved while any linked advisory remains open',()=>{
+  const issue={body:'https://github.com/owner/repo/security/dependabot/10 https://github.com/owner/repo/security/dependabot/11'};
+  assert.equal(issueAlertsResolved(issue,new Set([11])),false);
+  assert.equal(issueAlertsResolved(issue,new Set()),true);
+  assert.equal(issueAlertsResolved({body:'No verified advisory links'},new Set()),false);
 });
 test('only backend and frontend manifests are eligible for alert remediation', () => {
   assert.equal(ALERT_MANIFESTS.has('backend/pom.xml'), true);

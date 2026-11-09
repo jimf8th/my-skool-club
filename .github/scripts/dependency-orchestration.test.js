@@ -19,11 +19,11 @@ function harness(overrides = {}) {
     users:{getAuthenticated:async()=>({data:{login:'automation-user'}})},
     repos:{get:async()=>({data:{default_branch:'main'}}),getBranch:async()=>({data:{commit:{sha:'main'}}}),getBranchProtection:async()=>({data:protection})},
     pulls:{list:api('pulls'),get:async()=>({data:pr}),listFiles:api('files'),listReviews:api('reviews'),merge:write('merge'),updateBranch:write('update-branch'),requestReviewers:write('review')},
-    issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix')},
+    issues:{listForRepo:api('issues'),listComments:api('comments'),createComment:write('fix'),update:write('close-task')},
     actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
-  graphql:async(query)=> query.startsWith('mutation') ? (writes.push(['review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
+  graphql:async(query)=> query.startsWith('mutation') ? (writes.push([query.includes('markPullRequestReadyForReview')?'ready':'review',{}]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
   request:write('retry-deployment'),
   paginate:async (method,args) => method.kind === 'runs' && args.workflow_id === 'cloud-run-deploy.yml'
     ? (overrides.deployments || [{id:2,status:'completed',conclusion:'success'}]) : ({
@@ -55,6 +55,18 @@ test('unrelated Copilot PR is not treated as a dependency task',async()=>{
   const h=harness({pr:{user:{login:'copilot-swe-agent[bot]'}}});
   await run(h); assert.equal(h.writes.length,0);
 });
+test('actual REST Copilot author alias is accepted only with a trusted scoped task',async()=>{
+  const h=harness({pr:{user:{login:'Copilot',type:'Bot'}},pages:{issues:[{number:64,user:{login:'automation-user'},body:'<!-- dependency-scope:backend-frontend -->'}]},graph:{closingIssuesReferences:{nodes:[{number:64}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['merge','delete']);
+});
+test('shared Copilot reviewer alias is correlated with live GraphQL review provenance',async()=>{
+  const h=harness({pr:{user:{login:'Copilot',type:'Bot'}},pages:{issues:[{number:64,user:{login:'automation-user'},body:'<!-- dependency-scope:backend-frontend -->'}],reviews:[{id:5820605212,user:{login:'Copilot',type:'Bot'},state:'APPROVED',commit_id:'head'}]},graph:{closingIssuesReferences:{nodes:[{number:64}]},reviews:{nodes:[{fullDatabaseId:'5820605212',isCopilotCodeReview:true}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['merge','delete']);
+});
+test('a different provenance ID cannot approve a shared bot alias',async()=>{
+  const h=harness({pages:{reviews:[{id:2,user:{login:'Copilot',type:'Bot'},state:'APPROVED',commit_id:'head'}]},graph:{reviews:{nodes:[{fullDatabaseId:'1',isCopilotCodeReview:true}]}}});
+  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['review']);
+});
 test('renaming a protected workflow into a manifest cannot bypass policy',async()=>{
   const h=harness({pages:{files:[{filename:'frontend/package.json',previous_filename:'.github/workflows/ci-tests.yml'}]}});
   await run(h); assert.equal(h.writes.length,0);
@@ -63,13 +75,24 @@ test('without review, request a review and never merge',async()=>{
   const h=harness({pages:{reviews:[]}}); await run(h);
   assert.deepEqual(h.writes.map(w=>w[0]),['review']);
 });
+test('tested drafts become ready for review without granting merge permission',async()=>{
+  const h=harness({pr:{draft:true},pages:{reviews:[]}});await run(h);
+  assert.deepEqual(h.writes.map(w=>w[0]),['ready']);
+});
 test('a failed test run invokes Copilot instead of merging',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});
   await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['fix']);
 });
-test('authorized scoped CI is approved automatically without merging untested code',async()=>{
+test('GitHub approval policy is reported explicitly without calling the fork-only approval API',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'action_required'}]}});
-  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['approve-ci']);
+  await assert.rejects(run(h),/automation stopped/);assert.equal(h.writes.length,0);assert.ok(h.notes.some(note=>note.includes('Require approval for workflow runs')));
+});
+test('the first PR error stops processing before another PR can mutate or merge',async()=>{
+  const h=harness({pages:{pulls:[{number:1},{number:2}]}});
+  let reads=0;
+  h.github.rest.pulls.get=async()=>{reads+=1;throw new Error('API unavailable');};
+  await assert.rejects(run(h),/no subsequent mutations/);
+  assert.equal(reads,1);assert.equal(h.writes.length,0);
 });
 test('unresolved review threads block merge',async()=>{
   const h=harness({graph:{reviewThreads:{nodes:[{isResolved:false}],pageInfo:{hasNextPage:false}}}});
@@ -112,4 +135,14 @@ test('mobile alerts do not create or assign Copilot tasks',async()=>{
   await run({...h,scanAlerts:true});
   assert.equal(h.writes.length,0);
   assert.ok(h.notes.some(note=>note.includes('Open backend/frontend alerts: 0')));
+});
+test('overlapping tasks close only after their alerts disappear and production is verified',async()=>{
+  for (const deployed of [true,false]) {
+    const issue={number:64,state:'open',user:{login:'automation-user'},assignees:[{login:'Copilot',type:'Bot'}],body:'<!-- dependency-scope:backend-frontend --> https://github.com/owner/repo/security/dependabot/10'};
+    const h=harness({pages:{pulls:[],issues:[issue]},deployments:[{id:2,status:deployed?'completed':'in_progress',conclusion:deployed?'success':null}]});
+    const paginate=h.github.paginate;
+    h.github.paginate=async(method,args)=>typeof method === 'string' ? [] : paginate(method,args);
+    await run({...h,scanAlerts:true});
+    assert.deepEqual(h.writes.map(w=>w[0]),deployed?['close-task']:[]);
+  }
 });
