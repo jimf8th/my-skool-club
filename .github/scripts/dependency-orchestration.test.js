@@ -99,12 +99,12 @@ test('unresolved review threads block merge',async()=>{
   await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['fix']);
 });
 test('outdated machine feedback requests fresh approval before it can be resolved',async()=>{
-  const thread={id:'thread',isResolved:false,isOutdated:true,comments:{nodes:[{pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
+  const thread={id:'thread',isResolved:false,isOutdated:true,comments:{nodes:[{author:{__typename:'Bot',login:'copilot-pull-request-reviewer'},pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
   const h=harness({pages:{reviews:[]},graph:{reviewThreads:{nodes:[thread],pageInfo:{hasNextPage:false}}}});
   await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['review']);
 });
 test('fresh approval can resolve old machine feedback but never merge with stale mergeability',async()=>{
-  const thread={id:'thread',isResolved:false,isOutdated:true,comments:{nodes:[{pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
+  const thread={id:'thread',isResolved:false,isOutdated:true,comments:{nodes:[{author:{__typename:'Bot',login:'copilot-pull-request-reviewer'},pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
   const h=harness({graph:{reviewThreads:{nodes:[thread],pageInfo:{hasNextPage:false}}}});
   await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['resolve-thread']);
 });

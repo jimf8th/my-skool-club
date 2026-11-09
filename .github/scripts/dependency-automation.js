@@ -57,7 +57,9 @@ function outdatedMachineThread(thread, head) {
   return !thread.isResolved && thread.isOutdated === true && comments?.pageInfo?.hasNextPage === false
     && comments.nodes.length > 0 && comments.nodes.every(comment => {
       const review = comment?.pullRequestReview;
-      return review?.isCopilotCodeReview === true && typeof review.commit?.oid === 'string' && review.commit.oid !== head;
+      const author = comment?.author;
+      const machineAuthor = author?.__typename === 'Bot' && ['copilot','copilot-pull-request-reviewer','copilot-pull-request-reviewer[bot]'].includes(author.login?.toLowerCase());
+      return machineAuthor && review?.isCopilotCodeReview === true && typeof review.commit?.oid === 'string' && review.commit.oid !== head;
     });
 }
 
@@ -117,7 +119,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
           closingIssuesReferences(first:100) { nodes { number } }
           reviews(last:100) { nodes { fullDatabaseId isCopilotCodeReview } }
           reviewThreads(first:100) { nodes { id isResolved isOutdated comments(first:100) {
-            nodes { pullRequestReview { isCopilotCodeReview commit { oid } } } pageInfo { hasNextPage }
+            nodes { author { __typename login } pullRequestReview { isCopilotCodeReview commit { oid } } } pageInfo { hasNextPage }
           } } pageInfo { hasNextPage } }
         } }
       }`, { ...repo, number: pr.number });

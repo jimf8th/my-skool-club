@@ -75,7 +75,7 @@ test('a task is not resolved while any linked advisory remains open',()=>{
   assert.equal(issueAlertsResolved({body:'No verified advisory links'},new Set()),false);
 });
 test('only fully inspected outdated machine-only threads can retire',()=>{
-  const thread={isResolved:false,isOutdated:true,comments:{nodes:[{pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
+  const thread={isResolved:false,isOutdated:true,comments:{nodes:[{author:{__typename:'Bot',login:'copilot-pull-request-reviewer'},pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
   assert.equal(outdatedMachineThread(thread,'new'),true);
   assert.equal(outdatedMachineThread({...thread,isOutdated:false},'new'),false);
   assert.equal(outdatedMachineThread(thread,'old'),false);
@@ -83,6 +83,8 @@ test('only fully inspected outdated machine-only threads can retire',()=>{
   assert.equal(outdatedMachineThread({...thread,comments:{...thread.comments,nodes:[{pullRequestReview:{isCopilotCodeReview:false,commit:{oid:'old'}}}]}},'new'),false);
   assert.equal(outdatedMachineThread(null,'new'),false);
   assert.equal(outdatedMachineThread({...thread,comments:{...thread.comments,nodes:[null]}},'new'),false);
+  const humanReply={author:{__typename:'User',login:'maintainer'},pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}};
+  assert.equal(outdatedMachineThread({...thread,comments:{...thread.comments,nodes:[...thread.comments.nodes,humanReply]}},'new'),false);
 });
 test('only backend and frontend manifests are eligible for alert remediation', () => {
   assert.equal(ALERT_MANIFESTS.has('backend/pom.xml'), true);
