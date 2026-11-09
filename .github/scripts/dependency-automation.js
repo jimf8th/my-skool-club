@@ -124,9 +124,10 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const runs = await github.paginate(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: 'ci-tests.yml', head_sha: pr.head.sha, event: 'pull_request', per_page: 100 });
       const latest = [...runs].sort((a, b) => b.id - a.id)[0];
       if (latest?.status === 'action_required' || latest?.conclusion === 'action_required') {
-        // The user authorized unattended CI for scoped bot PRs. This run ID is
-        // immutable and its SHA was checked above; workflow changes are excluded.
-        await mutate(`#${pr.number}: approve scoped read-only CI workflow.`, () => github.rest.actions.approveWorkflowRun({ ...repo, run_id: latest.id }));
+        // GitHub's approval API rejects Copilot runs. The repository policy
+        // must allow them natively; never pretend this endpoint can approve it.
+        record(`#${pr.number}: configure Copilot Cloud agent > Policies > Require approval for workflow runs = off.`);
+        core.setFailed('Copilot workflow approval policy blocks unattended CI.');
         continue;
       }
       const jobs = latest?.conclusion === 'success'

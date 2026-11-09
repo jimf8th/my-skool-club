@@ -71,9 +71,9 @@ test('a failed test run invokes Copilot instead of merging',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});
   await run(h); assert.deepEqual(h.writes.map(w=>w[0]),['fix']);
 });
-test('authorized scoped CI is approved automatically without merging untested code',async()=>{
+test('GitHub approval policy is reported explicitly without calling the fork-only approval API',async()=>{
   const h=harness({pages:{runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'action_required'}]}});
-  await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['approve-ci']);
+  await run(h);assert.equal(h.writes.length,0);assert.ok(h.notes.some(note=>note.includes('policy blocks unattended CI')));
 });
 test('unresolved review threads block merge',async()=>{
   const h=harness({graph:{reviewThreads:{nodes:[{isResolved:false}],pageInfo:{hasNextPage:false}}}});
