@@ -80,3 +80,20 @@ test('admin bypass or disabled strict checks stop orchestration',async()=>{
   const h=harness({protection:{enforce_admins:{enabled:false}}});
   await assert.rejects(run(h),/strict checks/); assert.equal(h.writes.length,0);
 });
+for (const files of [
+  [{filename:'mobile/package-lock.json'}],
+  [{filename:'frontend/package.json'},{filename:'mobile/package.json'}],
+  [{filename:'frontend/package.json',previous_filename:'mobile/package.json'}],
+]) {
+  test(`out-of-scope PR cannot request remediation, review, merge or deletion: ${JSON.stringify(files)}`,async()=>{
+    const h=harness({pages:{files}}); await run(h); assert.equal(h.writes.length,0);
+  });
+}
+test('mobile alerts do not create or assign Copilot tasks',async()=>{
+  const h=harness({pages:{pulls:[]}});
+  const paginate=h.github.paginate;
+  h.github.paginate=async(method,args)=> typeof method === 'string' ? [{dependency:{manifest_path:'mobile/package-lock.json',package:{name:'axios'}}}] : paginate(method,args);
+  await run({...h,scanAlerts:true});
+  assert.equal(h.writes.length,0);
+  assert.ok(h.notes.some(note=>note.includes('Open backend/frontend alerts: 0')));
+});

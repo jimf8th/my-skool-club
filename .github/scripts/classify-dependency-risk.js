@@ -121,8 +121,8 @@ function classifyRisk({ files, ecosystem, updateType, packageNames, hasCriticalS
     policy.sensitivePackages.some((sensitive) => isSensitivePackageMatch(name, sensitive))
   );
   const multiDependency = packageNames.length > 1;
-  const allowedManifests = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json', 'mobile/package.json', 'mobile/package-lock.json']);
-  const protectedPatterns = [/^\.github\//, /^\.agents\//, /^\.codex\//, /(^|\/)AGENTS\.md$/, /(^|\/)SKILL\.md$/, /^scripts\//, /^Dockerfile(?:\.|$)/, /^docker-compose/, /^cloud-run/, /(^|\/)\.(env|gitignore|dockerignore|easignore)/, /\.(pem|p8|key|jks|keystore)$/, /^mobile\/(\.eas\/|eas\.json|app\.(json|config\.js)|config\/)/, /^backend\/src\/main\/resources\//, /^backend\/src\/main\/java\/.*\/(security|config)\//];
+  const allowedManifests = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json']);
+  const protectedPatterns = [/^mobile\//, /^\.github\//, /^\.agents\//, /^\.codex\//, /(^|\/)AGENTS\.md$/, /(^|\/)SKILL\.md$/, /^scripts\//, /^Dockerfile(?:\.|$)/, /^docker-compose/, /^cloud-run/, /(^|\/)\.(env|gitignore|dockerignore|easignore)/, /\.(pem|p8|key|jks|keystore)$/, /^mobile\/(\.eas\/|eas\.json|app\.(json|config\.js)|config\/)/, /^backend\/src\/main\/resources\//, /^backend\/src\/main\/java\/.*\/(security|config)\//];
   const protectedFiles = files.filter(file => protectedPatterns.some(pattern => pattern.test(file)));
   const requiresMaintainer = protectedFiles.length > 0 || files.length === 0;
   const manifestOnly = files.length > 0 && files.every(file => allowedManifests.has(file));

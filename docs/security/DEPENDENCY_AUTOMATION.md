@@ -1,29 +1,30 @@
-# Dependency automation
+# Backend and frontend dependency automation
 
-Follow [the step-by-step setup guide](DEPENDENCY_AUTOMATION_SETUP.md) before enabling unattended processing. The [audit](DEPENDENCY_AUTOMATION_AUDIT.md) records the state before this implementation.
+Follow [the setup guide](DEPENDENCY_AUTOMATION_SETUP.md) before enabling unattended processing. The [historical audit](DEPENDENCY_AUTOMATION_AUDIT.md) records the state before implementation and before the owner excluded mobile releases.
 
-## Execution model
+## Scope and execution
 
-- Dependabot monitors backend Maven, frontend and mobile npm dependencies, GitHub Actions and Docker.
-- Pull-request CI has read-only access and runs backend unit/integration, frontend component, browser, mobile Jest, security/dependency review and automation policy tests.
-- The Dependency remediation workflow runs trusted default-branch code after CI completes and every 30 minutes. It never checks out or executes pull-request code with the automation token.
-- A Copilot-capable user token reads current alerts, groups them by manifest/package, and creates at most two concurrent coding tasks. Existing failed dependency PRs receive at most three repair requests, once per head commit.
-- Copilot-origin PRs must be linked to a task created by that automation identity. Unrelated and fork PRs are skipped.
-- Every automatic merge requires all six CI jobs on the current head, an actual current-head approval, no changes requested, resolved threads, a clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition.
-- Automation, deployment, signing, credential and sensitive backend configuration changes require a maintainer. Unknown risk is never classified as a low-risk patch.
-- The user-token merge emits the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and verifies health. Deployments are serialized per branch.
-- After a successful main Cloud Run deployment, relevant mobile changes start iOS native smoke tests and production builds in Expo Workflows. Each exact production build is submitted to TestFlight. Submission records are GitHub prereleases, with incomplete attempts held as drafts to prevent duplicates.
+- Dependabot version updates cover Maven under `/backend` and npm under `/frontend`.
+- Alert remediation accepts only `backend/pom.xml`, `frontend/package.json`, and `frontend/package-lock.json`. GitHub may continue to show alerts for other manifests; those are excluded from this automation.
+- Automatic remediation, review and merge require every changed path (including the previous path of a renamed file) to remain inside `backend/` or `frontend/`. Mobile, infrastructure, Docker and GitHub Actions updates are outside this scope.
+- Pull-request CI has read-only access. The shared repository CI retains its existing backend, frontend, browser, mobile Jest and security regression checks, plus automation policy tests. It needs no Expo or app-store credentials.
+- Dependency remediation executes trusted default-branch code after CI completes and every 30 minutes. It never checks out or executes PR code with the automation token.
+- A Copilot-capable user token groups scoped alerts by manifest/package and creates at most two concurrent coding tasks. Failed eligible PRs receive at most three repair requests, once per head commit.
+- Copilot PRs must link to a scoped task created by that automation identity. Unrelated and fork PRs are skipped.
+- Every automatic merge requires all six CI jobs on the current head, an actual current-head approval, no changes requested, resolved threads, clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition.
+- Sensitive backend configuration and security changes require a maintainer. Unknown risk is never classified as a low-risk patch.
+- User-token merges emit the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and checks health. Deployments are serialized per branch.
 
 ## Configuration
 
-Repository Actions secrets: `DEPENDENCY_AUTOMATION_TOKEN`, `EXPO_TOKEN`. Platform signing and store submission keys are managed in Expo.
+Required repository Actions secret: `DEPENDENCY_AUTOMATION_TOKEN`. No Expo, Apple or Google Play setup is required for this scope.
 
-Activation flags: `ENABLE_DEPENDENCY_AUTOMATION`, `ENABLE_MOBILE_BETA_RELEASE`. Both default to disabled. `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY` governs the existing backend/frontend rollout. The old iOS monthly placeholder no longer starts a competing release process.
+`ENABLE_DEPENDENCY_AUTOMATION` defaults to disabled. `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY` governs the existing backend/frontend rollout.
 
-Run `bash scripts/configure-dependency-automation.sh --check`, then `--apply` after the implementation passes on main. Validate the credentials and dry runs before `--enable`. Use `--disable` to stop new unattended work.
+Run `bash scripts/configure-dependency-automation.sh --check`, then `--apply` after the implementation passes on main. Validate the dry run and one controlled Copilot change before `--enable`. Use `--disable` to stop new unattended work.
 
 ## Validation
 
-Run `node --test .github/scripts/*.test.js` and actionlint. The tests cover protected file changes and renames, stale/dismissed reviews, changes requested, exact-head CI, forks, unrelated agent PRs, bounded same-head remediation and atomic merging. Expo workflow validation also checks account capabilities; native Maestro jobs require an eligible paid Expo plan.
+Run `node --test .github/scripts/*.test.js` and actionlint. Tests cover scope filtering, protected changes and renames, stale/dismissed reviews, changes requested, exact-head CI, forks, unrelated agent PRs, bounded same-head remediation and atomic merging.
 
-A green build or successful upload is not proof that a security advisory has closed or a store build is available to testers. Inspect current Dependabot alerts and the store processing results.
+Verify the matching advisory closes on the default branch after a merge. Passing CI or deployment alone does not establish that a vulnerable dependency was removed.

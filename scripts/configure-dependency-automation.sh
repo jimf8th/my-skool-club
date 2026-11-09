@@ -10,8 +10,7 @@ command -v gh >/dev/null || { echo 'Install GitHub CLI with brew install gh, the
 gh auth status >/dev/null
 if [[ "$MODE" == --disable ]]; then
   gh variable set ENABLE_DEPENDENCY_AUTOMATION --repo "$AUTOMATION_REPOSITORY" --body false
-  gh variable set ENABLE_MOBILE_BETA_RELEASE --repo "$AUTOMATION_REPOSITORY" --body false
-  echo 'New dependency merges and mobile releases are disabled. In-progress runs are unchanged.'
+  echo 'New dependency merges are disabled. In-progress runs are unchanged.'
   exit 0
 fi
 TASK_TEMP="$(mktemp -d)"
@@ -27,7 +26,7 @@ const dir = process.argv[2];
 const read = name => JSON.parse(fs.readFileSync(path.join(dir, name)));
 const secrets = new Set(read('secrets.json').map(s => s.name));
 const required = require(process.cwd() + '/.github/scripts/dependency-automation').REQUIRED_JOBS;
-for (const name of ['DEPENDENCY_AUTOMATION_TOKEN', 'EXPO_TOKEN']) {
+for (const name of ['DEPENDENCY_AUTOMATION_TOKEN']) {
   if (!secrets.has(name)) throw new Error(`Add repository Actions secret ${name} first. See docs/security/DEPENDENCY_AUTOMATION_SETUP.md.`);
 }
 const run = read('ci.json').workflow_runs[0];
@@ -43,13 +42,13 @@ fs.writeFileSync(path.join(dir, 'protection.json'), JSON.stringify({
   required_pull_request_reviews:{dismiss_stale_reviews:true, require_code_owner_reviews:false, required_approving_review_count:1, require_last_push_approval:true},
   restrictions:null, required_conversation_resolution:true, allow_force_pushes:false, allow_deletions:false,
 }));
-console.log('Required secret names and six passing CI checks are present. Expo signing and Copilot entitlement still need their dry runs.');
+console.log('Required secret names and six passing CI checks are present. Copilot entitlement and token permissions still need a dry run.');
 NODE
 if [[ "$MODE" == --apply ]]; then
   gh api --method PATCH "repos/$AUTOMATION_REPOSITORY" -F allow_auto_merge=true -F delete_branch_on_merge=true >/dev/null
   gh api --method PUT "repos/$AUTOMATION_REPOSITORY/branches/main/protection" --input "$TASK_TEMP/protection.json" >/dev/null
   gh label create dependency-automation --repo "$AUTOMATION_REPOSITORY" --description 'Tracked dependency remediation task' --color '0366d6' --force
-  echo 'Required checks and reviews are enforced. Run both dry runs before --enable.'
+  echo 'Required checks and reviews are enforced. Run the Dependency remediation dry run before --enable.'
 elif [[ "$MODE" == --enable ]]; then
   gh api "repos/$AUTOMATION_REPOSITORY/branches/main/protection" > "$TASK_TEMP/current-protection.json"
   node - "$TASK_TEMP/current-protection.json" <<'NODE'
@@ -57,8 +56,7 @@ const p = require(process.argv[2]);
 if (!p.required_status_checks?.strict || !p.required_pull_request_reviews?.dismiss_stale_reviews || !p.required_conversation_resolution?.enabled) throw new Error('Run --apply first.');
 NODE
   gh variable set ENABLE_DEPENDENCY_AUTOMATION --repo "$AUTOMATION_REPOSITORY" --body true
-  gh variable set ENABLE_MOBILE_BETA_RELEASE --repo "$AUTOMATION_REPOSITORY" --body true
-  echo 'Automatic dependency processing and beta releases enabled. Monitor Actions and EAS.'
+  echo 'Backend/frontend dependency automation enabled. Monitor GitHub Actions.'
 else
   echo 'Check completed. --apply configures branch protection; --enable activates automation after dry runs.'
 fi

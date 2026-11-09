@@ -7,6 +7,11 @@ const { classifyRisk } = require('./classify-dependency-risk');
 const REVIEWER = 'copilot-pull-request-reviewer[bot]';
 const CODER = 'copilot-swe-agent[bot]';
 const LABEL = 'dependency-automation';
+const SCOPE_MARKER = '<!-- dependency-scope:backend-frontend -->';
+const ALERT_MANIFESTS = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json']);
+function filesInScope(files) {
+  return files.length > 0 && files.every(file => /^(backend|frontend)\//.test(file));
+}
 const REQUIRED_JOBS = ['Backend unit and integration tests', 'Frontend unit and component tests',
   'Frontend Playwright browser tests', 'Mobile unit and component tests', 'Security and dependency checks', 'Automation policy tests'];
 
@@ -57,7 +62,8 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     return dryRun ? undefined : operation();
   };
   const issues = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', labels: LABEL, per_page: 100 });
-  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user.login === viewer);
+  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user.login === viewer
+    && issue.body?.includes(SCOPE_MARKER));
   const pulls = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', base: main, per_page: 100 });
 
   async function fix(pr, comments, reason) {
@@ -66,7 +72,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     if (previous.length >= 3) { record(`#${pr.number}: remediation limit reached; maintainer action required.`); return; }
     await mutate(`#${pr.number}: request Copilot remediation (${reason}).`, () => github.rest.issues.createComment({
       ...repo, issue_number: pr.number,
-      body: `<!-- dependency-fix:${pr.head.sha} -->\n@copilot Fix the dependency compatibility/test or review failure on this branch. Use CI and unresolved review threads as diagnostics. Preserve security controls and business behavior. Do not change workflows, deployment/signing configuration, credentials, tests to weaken assertions, or coverage thresholds. Run backend, frontend and mobile regression tests. Resolve review feedback after implementing it. Keep the PR linked to its original dependency issue. Attempt ${previous.length + 1} of 3.`,
+      body: `<!-- dependency-fix:${pr.head.sha} -->\n@copilot Fix the dependency compatibility/test or review failure on this branch. Limit all changes to backend/ and frontend/. Use CI and unresolved review threads as diagnostics. Preserve security controls and business behavior. Do not change mobile code, workflows, deployment configuration, credentials, tests to weaken assertions, or coverage thresholds. Run backend and frontend regression tests. Resolve review feedback after implementing it. Keep the PR linked to its original dependency issue. Attempt ${previous.length + 1} of 3.`,
     }));
   }
 
@@ -88,6 +94,9 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         record(`#${pr.number}: no trusted dependency task; skipping.`); continue;
       }
       const files = await github.paginate(github.rest.pulls.listFiles, { ...repo, pull_number: pr.number, per_page: 100 });
+      if (!filesInScope(files.flatMap(file => [file.filename, file.previous_filename].filter(Boolean)))) {
+        record(`#${pr.number}: outside backend/frontend scope; skipping.`); continue;
+      }
       const risk = classifyRisk({ files: files.flatMap(file => [file.filename, file.previous_filename].filter(Boolean)), ecosystem: 'unknown', updateType: 'unknown', packageNames: [], hasSourceChanges: false, changedOutsideManifests: false });
       if (risk.requiresMaintainer) { record(`#${pr.number}: maintainer review required for protected configuration.`); continue; }
       const comments = await github.paginate(github.rest.issues.listComments, { ...repo, issue_number: pr.number, per_page: 100 });
@@ -134,7 +143,8 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   }
 
   if (scanAlerts) {
-    const alerts = await github.paginate('GET /repos/{owner}/{repo}/dependabot/alerts', { ...repo, state: 'open', per_page: 100 });
+    const allAlerts = await github.paginate('GET /repos/{owner}/{repo}/dependabot/alerts', { ...repo, state: 'open', per_page: 100 });
+    const alerts = allAlerts.filter(alert => ALERT_MANIFESTS.has(alert.dependency.manifest_path));
     const groups = new Map();
     for (const alert of alerts) {
       const { manifest_path: manifest, package: { name } } = alert.dependency;
@@ -142,7 +152,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       if (!groups.has(key)) groups.set(key, { manifest, name, alerts: [] });
       groups.get(key).alerts.push(alert);
     }
-    record(`Open alerts: ${alerts.length}; affected dependency groups: ${groups.size}.`);
+    record(`Open backend/frontend alerts: ${alerts.length}; affected dependency groups: ${groups.size}. Other manifests are outside this automation's scope.`);
     let started = 0;
     const activeTasks = trustedIssues.filter(issue => issue.state === 'open');
     // A failed assignment must not leave a task permanently stranded.
@@ -163,7 +173,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       }
       const created = await mutate(`Create Copilot task for ${group.manifest}: ${group.name}.`, () => github.rest.issues.create({ ...repo,
         title: `Fix vulnerable dependency ${group.name} in ${group.manifest}`,
-        body: `${marker}\nFix current Dependabot alerts with the smallest compatible dependency/application changes.\n\n${group.alerts.map(alert => `- ${alert.security_advisory.ghsa_id} (${alert.security_advisory.severity}): ${alert.html_url}`).join('\n')}\n\nWork from ${main}. Reuse an existing dependency PR where appropriate. Run all backend, frontend and mobile tests. Do not weaken tests, auth or security controls. Do not modify automation, deployment, signing or credential files. Link your PR using Closes #ISSUE_NUMBER. Request review after completing the fix.`,
+        body: `${marker}\n${SCOPE_MARKER}\nFix current Dependabot alerts with the smallest compatible dependency/application changes in backend/ and frontend/ only.\n\n${group.alerts.map(alert => `- ${alert.security_advisory.ghsa_id} (${alert.security_advisory.severity}): ${alert.html_url}`).join('\n')}\n\nWork from ${main}. Reuse an existing dependency PR where appropriate. Run backend and frontend tests. Do not change mobile code or weaken tests, auth or security controls. Do not modify automation, deployment or credential files. Link your PR using Closes #ISSUE_NUMBER. Request review after completing the fix.`,
         labels: [LABEL],
       }));
       if (created) await github.rest.issues.addAssignees({ ...repo, issue_number: created.data.number, assignees: [CODER],
@@ -179,4 +189,4 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   await core.summary.addHeading('Dependency automation').addRaw(report.join('\n\n') || 'No eligible updates.').write();
 }
 
-module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER };
+module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS };

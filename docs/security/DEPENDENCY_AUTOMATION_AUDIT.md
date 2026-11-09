@@ -1,5 +1,7 @@
 # Dependabot automation readiness audit
 
+Historical audit: the owner has since limited implementation to backend and frontend. Mobile/Expo findings below are outside the current scope.
+
 Audit date: November 8, 2026. Source commit: `83b41a05f63a7eb3ebc7931302dc66cbe56f2005`.
 
 The requested alert → Copilot fix → review → tests → merge → backend/frontend/mobile deployment process is incomplete. The backend and bundled frontend deployment works after a normal push to main. Copilot remediation, automatic review and merge, and mobile release completion remain missing or blocked.

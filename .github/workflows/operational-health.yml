@@ -18,16 +18,15 @@ jobs:
           github-token: ${{ secrets.DEPENDENCY_AUTOMATION_TOKEN }}
           script: |
             if (!process.env.AUTOMATION_TOKEN) throw new Error('Configure DEPENDENCY_AUTOMATION_TOKEN first.');
-            const alerts = await github.paginate('GET /repos/{owner}/{repo}/dependabot/alerts', {...context.repo,state:'open',per_page:100});
-            const releases = await github.paginate(github.rest.repos.listReleases,{...context.repo,per_page:100});
+            const allAlerts = await github.paginate('GET /repos/{owner}/{repo}/dependabot/alerts', {...context.repo,state:'open',per_page:100});
+            const manifests = new Set(['backend/pom.xml','frontend/package.json','frontend/package-lock.json']);
+            const alerts = allAlerts.filter(a=>manifests.has(a.dependency.manifest_path));
             const {data:runs} = await github.rest.actions.listWorkflowRunsForRepo({...context.repo,per_page:30});
             const critical = alerts.filter(a=>a.security_advisory.severity === 'critical').length;
             const high = alerts.filter(a=>a.security_advisory.severity === 'high').length;
             await core.summary.addHeading('Live automation health').addTable([
               [{data:'Metric',header:true},{data:'Observed value',header:true}],
-              ['Open Dependabot alerts', String(alerts.length)],
+              ['Open backend/frontend Dependabot alerts', String(alerts.length)],
               ['Critical / high alerts', `${critical} / ${high}`],
-              ['Recorded beta submissions', String(releases.filter(r=>r.tag_name.startsWith('mobile-beta-') && !r.draft).length)],
-              ['Incomplete beta attempts', String(releases.filter(r=>r.tag_name.startsWith('mobile-beta-') && r.draft).length)],
               ['Failed runs in latest 30 workflow runs', String(runs.workflow_runs.filter(r=>r.conclusion === 'failure').length)],
             ]).write();

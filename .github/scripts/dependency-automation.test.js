@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { classifyRisk } = require('./classify-dependency-risk');
-const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER } = require('./dependency-automation');
+const { reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, filesInScope, ALERT_MANIFESTS } = require('./dependency-automation');
 
 const classify = files => classifyRisk({ files, ecosystem: 'npm', updateType: 'patch', packageNames: ['lodash'], hasCriticalSeverity: false, hasSourceChanges: false, changedOutsideManifests: false });
 test('a normal frontend patch can be low risk', () => assert.equal(classify(['frontend/package.json', 'frontend/package-lock.json']).classification, 'LOW'));
@@ -44,4 +44,15 @@ test('newer failed or running CI cannot be hidden by earlier success', () => {
 test('task identity groups advisories per manifest/package', () => {
   assert.equal(taskKey('mobile/package-lock.json', 'axios'), taskKey('mobile/package-lock.json', 'axios'));
   assert.notEqual(taskKey('mobile/package-lock.json', 'axios'), taskKey('frontend/package-lock.json', 'axios'));
+});
+test('only backend and frontend manifests are eligible for alert remediation', () => {
+  assert.equal(ALERT_MANIFESTS.has('backend/pom.xml'), true);
+  assert.equal(ALERT_MANIFESTS.has('frontend/package-lock.json'), true);
+  assert.equal(ALERT_MANIFESTS.has('mobile/package-lock.json'), false);
+});
+test('all changed and previous file paths must stay within web application scope', () => {
+  assert.equal(filesInScope(['backend/pom.xml', 'frontend/src/App.jsx']), true);
+  for (const files of [[], ['mobile/package.json'], ['backend/pom.xml', 'mobile/src/App.js'], ['Dockerfile'], ['.github/workflows/ci-tests.yml']]) {
+    assert.equal(filesInScope(files), false);
+  }
 });

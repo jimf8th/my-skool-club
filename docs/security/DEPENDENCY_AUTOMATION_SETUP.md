@@ -1,8 +1,8 @@
 # Set up dependency automation
 
-This guide configures `jimf8th/my-skool-club` for Dependabot alerts → Copilot fixes → review → tests → merge → Cloud Run → TestFlight.
+This guide configures `jimf8th/my-skool-club` for Dependabot alerts → Copilot fixes → review → tests → merge → Cloud Run.
 
-The implementation must first be merged and validated on `main`. Creating tokens alone does not activate it. During setup keep `ENABLE_DEPENDENCY_AUTOMATION` and `ENABLE_MOBILE_BETA_RELEASE` unset or `false`.
+The implementation must first be merged and validated on `main`. Creating a token alone does not activate it. During setup keep `ENABLE_DEPENDENCY_AUTOMATION` unset or `false`.
 
 Never paste credentials into chat, commit them, or put them in the project `.env`. The GitHub and Expo tokens go into repository **Actions secrets**; Apple submission keys are stored with Expo's app credentials. Keep recovery copies in a password manager.
 
@@ -40,107 +40,60 @@ Never paste credentials into chat, commit them, or put them in the project `.env
 
 Use the Copilot-enabled user's token, not `GITHUB_TOKEN` or a server-to-server installation token. The user token also lets a merged commit trigger the normal main push deployment without dispatching duplicate releases. Do not grant this token administration write access or branch-protection bypass access.
 
-## 3. Prepare Expo and create EXPO_TOKEN
+## 3. Apply GitHub settings after the implementation passes on main
 
-1. Sign in to [Expo](https://expo.dev/) using the account with access to the existing project. The configured EAS project ID is `543ebf4b-fa14-4d36-a40e-a90fb85c6538`.
-2. Open account settings → Access tokens → Create token. Name it `my-skool-club-github-actions`.
-3. If you limit token access, include this project and the permissions required for EAS builds, Workflows and submissions. The user must have access to both preview and production environments and app credentials.
-4. Copy the generated token.
-5. Return to the same GitHub Actions secrets page and add a repository secret named `EXPO_TOKEN`.
-6. Make sure your Expo plan/credits support the configured build and native Maestro jobs. During validation on November 8, Expo reported that this account's current plan does not permit Maestro jobs; this release path requires upgrading to a plan with that capability. Each iOS release includes a smoke-test build and a production build. No build was started during validation.
+The required secret is only `DEPENDENCY_AUTOMATION_TOKEN`. An existing `EXPO_TOKEN` may remain saved, but this automation does not read or require it.
 
-See [Expo programmatic access](https://docs.expo.dev/accounts/programmatic-access/).
-
-## 4. Configure iOS signing and TestFlight
-
-You need active Apple Developer membership and access to the app in App Store Connect. The current production bundle identifier is `com.myskoolclub.app`; the configured App Store Connect app ID is `6800048941`. Verify these refer to your app before continuing.
-
-1. Open [App Store Connect](https://appstoreconnect.apple.com/) → Users and Access → Integrations → App Store Connect API.
-2. If API access is not enabled, the Account Holder requests it first.
-3. Under Team Keys, generate a key named `My Skool Club EAS Submit`. Select the App Manager role for the EAS submission setup. Apple team keys apply across the account's apps, so keep this key restricted to the publishing service.
-4. Download the `.p8` private key once. Record the Key ID and Issuer ID in your password manager.
-5. In a terminal from the repository root, run:
-
-```bash
-cd mobile
-npx eas-cli@27.5.0 login
-npx eas-cli@27.5.0 credentials --platform ios
-```
-
-6. Select the production build profile. Set up/reuse the iOS Distribution Certificate and App Store provisioning profile for `com.myskoolclub.app`. Complete any Apple login/2FA prompts locally.
-7. In the EAS credential menu select App Store Connect API key / key for Expo Submit and upload the `.p8` key with its Key ID and Issuer ID. You can also use the project's Expo dashboard Credentials page for this association.
-8. Ensure the key is assigned to this production app for non-interactive submissions. Both `production` builds and the `beta` submit profile must resolve the app's remote credentials.
-9. In App Store Connect → the app → TestFlight, create an internal testing group, add your testers, and enable automatic distribution for that group. Uploading successfully does not mean Apple's processing is complete.
-
-The submission key stays in Expo, not in the GitHub repo or `.env`. Existing optional `APPLE_*` secrets are used by the separate App Store status monitor, not required for this EAS-managed TestFlight upload path.
-
-See [Apple's API-key steps](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/) and [Expo's iOS submission guide](https://docs.expo.dev/submit/ios/).
-
-## 5. Validate the first native build and TestFlight connection
-
-While still in `mobile`, create an initial production iOS build interactively. This resolves signing and account requirements that unattended jobs cannot answer:
-
-```bash
-npx eas-cli@27.5.0 build --platform ios --profile production
-```
-
-This command creates a paid/credit-consuming build according to your Expo plan. After it completes, record its build ID and perform one initial TestFlight upload:
-
-```bash
-npx eas-cli@27.5.0 submit --platform ios --profile beta --id YOUR_IOS_BUILD_ID
-```
-
-Confirm the build appears in TestFlight. Build/submission success and store availability are different states.
-
-## 6. Apply GitHub settings after the implementation is merged
-
-Install and sign in to GitHub CLI locally using an administrator account:
+Install GitHub CLI and sign in locally using an administrator account:
 
 ```bash
 brew install gh
 gh auth login
 ```
 
-From the repository root on the updated `main` branch:
+From the repository root on the updated main branch:
 
 ```bash
 bash scripts/configure-dependency-automation.sh --check
 bash scripts/configure-dependency-automation.sh --apply
 ```
 
-`--apply` enables native auto-merge and merged-branch deletion, creates the tracking label, and requires the six CI jobs, up-to-date branches, a current approval and resolved conversations on main. It refuses to run before the required main checks and secret names exist. It uses your local admin login for setup; the workflow token retains administration read-only access.
+The setup tool verifies the secret name and passing main checks before applying settings. It enables native auto-merge and deletion of merged branches and enforces up-to-date CI, a current approval, resolved conversations, and no administrator bypass on main. It creates the remediation tracking label. It uses your local administrator login to write these settings; the automation token only needs Administration read access.
 
-In Repository → Settings → Code security / Dependabot, verify alerts and security updates remain enabled. Their last audited state was enabled. Keep `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true`; the backend and bundled frontend deploy through the existing Cloud Run pipeline.
+Keep Dependabot alerts and security updates enabled under repository Settings → Code security / Dependabot. The version-update configuration monitors `/backend` Maven and `/frontend` npm only. Alert reports filter those same manifests; unrelated alerts can remain visible in GitHub.
 
-## 7. Run dry runs, then activate
+The existing `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true` setting controls production deployment of the backend and bundled frontend. Shared CI continues running the repository's existing regression suites; no native builds or mobile releases are started.
 
-In GitHub → Actions, select the updated main branch:
+## 4. Validate the token and Copilot, then activate
 
-1. Run Dependency remediation with `dry_run=true`, `scan_alerts=true`. Confirm it can read alerts, branch rules and PR state using the automation identity.
-2. Run Mobile beta release with `dry_run=true`. Confirm the selected commit and planned platforms. This does not start EAS or store submissions.
-3. Confirm Copilot can be assigned to one controlled issue and can produce an actual approving review on a test PR. A read-only dry run cannot prove these write operations or subscription entitlements.
-4. Start one real Mobile beta release with `dry_run=false`. The iOS workflow runs native public-auth Maestro smoke tests, builds the production archive, and submits that exact build to TestFlight.
-5. After these checks, activate:
+1. In GitHub → Actions → Dependency remediation → Run workflow, select main, `dry_run=true` and `scan_alerts=true`.
+2. Confirm the run can inspect scoped alerts, PRs and branch protection without permission failures. A dry run creates no issues, agent tasks, review requests or merges.
+3. Verify Copilot can be assigned one controlled backend/frontend task and can approve the resulting tested head. Read-only inspection cannot prove subscription entitlements or write operations.
+4. If Copilot only comments, enable approving reviews where offered or obtain a maintainer approval. If GitHub requires approval to start Copilot PR workflows, configure the supported automatic-run setting or approve those runs individually.
+5. Once validated, run:
 
 ```bash
 bash scripts/configure-dependency-automation.sh --enable
 ```
 
-This sets `ENABLE_DEPENDENCY_AUTOMATION=true` and `ENABLE_MOBILE_BETA_RELEASE=true`. Automatic merges use the six current-head CI results and an actual approval. Remediation retries are bounded, and protected automation/deployment/credential changes remain maintainer-only.
+This sets `ENABLE_DEPENDENCY_AUTOMATION=true`. Automatic processing runs every 30 minutes and after the relevant CI/deployment workflows complete. It creates at most two concurrent coding tasks and sends no more than three repair requests per PR. Every automatic merge still requires the tested head, a real approval and satisfied branch protection.
 
-To stop new automatic merges and beta releases:
+Only files inside `backend/` and `frontend/` may be changed by eligible PRs. Source and previous filenames are checked, so mixed mobile/web PRs and renames from other areas are excluded. Sensitive backend security/configuration changes remain maintainer-reviewed.
+
+To stop new automatic dependency work:
 
 ```bash
 bash scripts/configure-dependency-automation.sh --disable
 ```
 
-## 8. Watch results and recover interrupted mobile attempts
+Already-running workflows or agent tasks are unaffected by that flag.
 
-- GitHub Actions → Dependency remediation shows tasks, review waits, failed permissions and merges. GitHub Actions → Cloud Run Deployment verifies staging, migrations and production.
-- Mobile beta release starts after a successful main-branch Cloud Run deployment and only when mobile inputs differ from the previous beta release. The initial run has no baseline, so it plans iOS.
-- Expo → Workflows holds native build, Maestro and store-submission logs.
-- GitHub prereleases named `mobile-beta-PLATFORM-SHA` record successful submissions; the EAS workflow JSON is retained as an Actions artifact. Store processing remains visible in TestFlight.
-- An unfinished attempt retains a draft prerelease to prevent duplicate paid builds/uploads. Inspect the associated EAS run first. If submission already succeeded, reconcile and publish the record; if it did not, delete the draft only after confirming no upload is in flight, then rerun. Do not delete store builds to resolve an automation retry.
-- Rotate expiring tokens by replacing the matching Actions secret. Changing the automation user's GitHub identity requires migrating existing tracked issues so their trusted author still matches the new identity.
+## 5. Verify the first complete change
 
-Two GitHub Actions secrets are required for this path: `DEPENDENCY_AUTOMATION_TOKEN` and `EXPO_TOKEN`. Apple publishing keys and iOS signing credentials are managed through Expo.
+Watch GitHub Actions → Dependency remediation for the task and review decisions. The resulting dependency PR must pass the backend, frontend, browser, existing mobile Jest, security and automation policy regression checks. These shared tests do not extend the permitted change scope.
+
+After the reviewed PR merges, its user-token push starts Cloud Run Deployment. Verify image publication, staging health, the migration job, production deployment and production health. The container includes both the backend and compiled frontend.
+
+Confirm the corresponding backend/frontend advisory closes on main after GitHub rescans it. A successful build or deployment alone does not prove a vulnerable dependency was removed. Alerts without a patched version remain visible for maintainer mitigation.
+
+If a token expires, replace `DEPENDENCY_AUTOMATION_TOKEN` on the Actions secrets page. If the automation identity changes, migrate its tracked issues: the orchestrator deliberately trusts scoped tasks created by the configured automation user.
