@@ -1,0 +1,28 @@
+name: android beta release
+
+jobs:
+  build_smoke:
+    type: build
+    params:
+      platform: android
+      profile: ci-smoke
+  smoke:
+    needs: [build_smoke]
+    type: maestro
+    environment: preview
+    params:
+      build_id: ${{ needs.build_smoke.outputs.build_id }}
+      flow_path: e2e/maestro/release-public.yaml
+  build_production:
+    needs: [smoke]
+    type: build
+    params:
+      platform: android
+      profile: production
+  submit_beta:
+    needs: [build_production]
+    type: submit
+    environment: production
+    params:
+      build_id: ${{ needs.build_production.outputs.build_id }}
+      profile: beta

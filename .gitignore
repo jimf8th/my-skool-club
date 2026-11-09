@@ -120,6 +120,7 @@ scripts/*
 !scripts/config.sh
 !scripts/configure-email.sh
 !scripts/configure-openai.sh
+!scripts/configure-dependency-automation.sh
 !scripts/deploy.sh
 !scripts/dev.sh
 !scripts/mobile.sh

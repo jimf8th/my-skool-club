@@ -20,6 +20,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: cloud-run-deployment-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -185,7 +189,7 @@ jobs:
     name: Production rollout
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_AUTOMATIC_PRODUCTION_DEPLOY == 'true') ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy_production == true)
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_production == true && inputs.staging_only != true)
     needs: [build-and-publish, deploy-staging]
     runs-on: ubuntu-latest
     environment: production

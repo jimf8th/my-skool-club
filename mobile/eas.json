@@ -11,13 +11,15 @@
       "env": {
         "APP_ENV": "dev",
         "EXPO_PUBLIC_APP_ENV": "dev"
-      }
+      },
+      "node": "22.16.0"
     },
     "development-simulator": {
       "extends": "development",
       "ios": {
         "simulator": true
-      }
+      },
+      "node": "22.16.0"
     },
     "test": {
       "distribution": "internal",
@@ -26,17 +28,20 @@
         "APP_ENV": "test",
         "EXPO_PUBLIC_APP_ENV": "test",
         "EXPO_PUBLIC_API_URL": "https://myskoolclub.com/api"
-      }
+      },
+      "node": "22.16.0"
     },
     "test-development": {
       "extends": "test",
-      "developmentClient": true
+      "developmentClient": true,
+      "node": "22.16.0"
     },
     "test-simulator": {
       "extends": "test-development",
       "ios": {
         "simulator": true
-      }
+      },
+      "node": "22.16.0"
     },
     "production": {
       "autoIncrement": true,
@@ -45,6 +50,17 @@
         "APP_ENV": "prod",
         "EXPO_PUBLIC_APP_ENV": "prod",
         "EXPO_PUBLIC_API_URL": "https://myskoolclub.com/api"
+      },
+      "node": "22.16.0"
+    },
+    "ci-smoke": {
+      "extends": "test",
+      "developmentClient": false,
+      "ios": {
+        "simulator": true
+      },
+      "android": {
+        "buildType": "apk"
       }
     }
   },
@@ -52,6 +68,15 @@
     "production": {
       "ios": {
         "ascAppId": "6800048941"
+      }
+    },
+    "beta": {
+      "ios": {
+        "ascAppId": "6800048941"
+      },
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
       }
     }
   }
