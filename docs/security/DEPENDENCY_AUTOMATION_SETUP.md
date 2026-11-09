@@ -57,7 +57,7 @@ You need active Apple Developer membership and access to the app in App Store Co
 
 1. Open [App Store Connect](https://appstoreconnect.apple.com/) → Users and Access → Integrations → App Store Connect API.
 2. If API access is not enabled, the Account Holder requests it first.
-3. Under Team Keys, generate a key named `My Skool Club EAS Submit`. Select the Developer role for build upload if permitted by your account policy; use App Manager only if your submission setup needs the additional access.
+3. Under Team Keys, generate a key named `My Skool Club EAS Submit`. Select the App Manager role for the EAS submission setup. Apple team keys apply across the account's apps, so keep this key restricted to the publishing service.
 4. Download the `.p8` private key once. Record the Key ID and Issuer ID in your password manager.
 5. In a terminal from the repository root, run:
 
