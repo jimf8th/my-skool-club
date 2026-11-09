@@ -7,6 +7,8 @@ const { classifyRisk } = require('./classify-dependency-risk');
 const { protectionReady } = require('./dependency-protection');
 const REVIEWER = 'copilot-pull-request-reviewer[bot]';
 const CODER = 'copilot-swe-agent[bot]';
+const isCopilotCoder = user => typeof user?.login === 'string' && (user.login === CODER || (user.type === 'Bot' && user.login.toLowerCase() === 'copilot'));
+const isCopilotReview = review => typeof review?.user?.login === 'string' && (review.user.login === REVIEWER || review.isCopilotCodeReview === true);
 const LABEL = 'dependency-automation';
 const SCOPE_MARKER = '<!-- dependency-scope:backend-frontend -->';
 const ALERT_MANIFESTS = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json']);
@@ -18,13 +20,15 @@ const REQUIRED_JOBS = ['Backend unit and integration tests', 'Frontend unit and 
 
 function reviewDecision(reviews, sha, author) {
   const latest = new Map();
-  for (const review of [...reviews].sort((a, b) => a.id - b.id)) {
+  const missingAuthorBlock = reviews.some(review => review?.state === 'CHANGES_REQUESTED' && typeof review?.user?.login !== 'string');
+  for (const review of reviews.filter(review => typeof review?.user?.login === 'string').sort((a, b) => a.id - b.id)) {
     if (review.state !== 'COMMENTED') latest.set(review.user.login, review);
   }
   const active = [...latest.values()];
-  const blocked = active.some(review => review.state === 'CHANGES_REQUESTED');
+  const blocked = missingAuthorBlock || active.some(review => review.state === 'CHANGES_REQUESTED');
   const approved = active.some(review => review.state === 'APPROVED' && review.commit_id === sha
-    && review.user.login !== author && (review.user.login === REVIEWER || review.user.type === 'User'));
+    && (review.user.login !== author || review.isCopilotCodeReview === true)
+    && (isCopilotReview(review) || review.user.type === 'User'));
   return { approved: approved && !blocked, blocked };
 }
 
@@ -40,6 +44,11 @@ function testsDecision(runs, jobs, head) {
 
 function taskKey(manifest, name, advisoryIds = []) {
   return createHash('sha256').update(`${manifest}:${name}:${[...advisoryIds].sort().join(',')}`).digest('hex').slice(0, 20);
+}
+
+function issueAlertsResolved(issue, openAlertIds) {
+  const ids = [...(issue.body || '').matchAll(/\/security\/dependabot\/(\d+)/g)].map(match=>Number(match[1]));
+  return ids.length > 0 && ids.every(id=>!openAlertIds.has(id));
 }
 
 async function run({ github, context, core, dryRun = false, scanAlerts = false }) {
@@ -59,7 +68,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     return dryRun ? undefined : operation();
   };
   const issues = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', labels: LABEL, per_page: 100 });
-  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user.login === viewer
+  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user?.login === viewer
     && issue.body?.includes(SCOPE_MARKER));
   const pulls = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', base: main, per_page: 100 });
   const mainSha = (await github.rest.repos.getBranch({ ...repo, branch: main })).data.commit.sha;
@@ -77,7 +86,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   }
 
   async function fix(pr, comments, reason) {
-    const previous = comments.filter(comment => comment.user.login === viewer && comment.body.includes('<!-- dependency-fix:'));
+    const previous = comments.filter(comment => comment.user?.login === viewer && comment.body?.includes('<!-- dependency-fix:'));
     if (previous.some(comment => comment.body.includes(`<!-- dependency-fix:${pr.head.sha} -->`))) return;
     if (previous.length >= 3) { record(`#${pr.number}: remediation limit reached; maintainer action required.`); return; }
     await mutate(`#${pr.number}: request Copilot remediation (${reason}).`, () => github.rest.issues.createComment({
@@ -90,12 +99,13 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     try {
       const pr = (await github.rest.pulls.get({ ...repo, pull_number: item.number })).data;
       if (pr.head.repo?.full_name !== fullName || pr.base.ref !== main) continue;
-      const dependabot = pr.user.login === 'dependabot[bot]';
-      const copilot = pr.user.login === CODER;
+      const dependabot = pr.user?.login === 'dependabot[bot]';
+      const copilot = isCopilotCoder(pr.user);
       if (!dependabot && !copilot) continue;
       const graph = await github.graphql(`query($owner:String!,$repo:String!,$number:Int!) {
         repository(owner:$owner,name:$repo) { pullRequest(number:$number) {
           closingIssuesReferences(first:100) { nodes { number } }
+          reviews(last:100) { nodes { fullDatabaseId isCopilotCodeReview } }
           reviewThreads(first:100) { nodes { isResolved } pageInfo { hasNextPage } }
         } }
       }`, { ...repo, number: pr.number });
@@ -120,26 +130,35 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
       const runs = await github.paginate(github.rest.actions.listWorkflowRuns, { ...repo, workflow_id: 'ci-tests.yml', head_sha: pr.head.sha, event: 'pull_request', per_page: 100 });
       const latest = [...runs].sort((a, b) => b.id - a.id)[0];
       if (latest?.status === 'action_required' || latest?.conclusion === 'action_required') {
-        // The user authorized unattended CI for scoped bot PRs. This run ID is
-        // immutable and its SHA was checked above; workflow changes are excluded.
-        await mutate(`#${pr.number}: approve scoped read-only CI workflow.`, () => github.rest.actions.approveWorkflowRun({ ...repo, run_id: latest.id }));
-        continue;
+        // GitHub's approval API rejects Copilot runs. The repository policy
+        // must allow them natively; never pretend this endpoint can approve it.
+        record(`#${pr.number}: configure Copilot Cloud agent > Policies > Require approval for workflow runs = off.`);
+        throw new Error('Copilot workflow approval policy blocks unattended CI.');
       }
       const jobs = latest?.conclusion === 'success'
         ? await github.paginate(github.rest.actions.listJobsForWorkflowRun, { ...repo, run_id: latest.id, filter: 'latest', per_page: 100 }) : [];
       const tests = testsDecision(runs, jobs, pr.head.sha);
       if (tests === 'failure') { await fix(pr, comments, 'tests failed'); continue; }
       if (tests !== 'success') { record(`#${pr.number}: waiting for current-head CI (${tests}).`); continue; }
+      if (pr.draft) {
+        // Complete CI before requesting approval; reviewers need a ready PR.
+        // Ready status grants no merge permission: approval and SHA gates follow.
+        await mutate(`#${pr.number}: mark tested draft ready for review.`, () => github.graphql(
+          'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id}}}', { id: pr.node_id }));
+        continue;
+      }
       const reviews = await github.paginate(github.rest.pulls.listReviews, { ...repo, pull_number: pr.number, per_page: 100 });
+      const provenReviewIds = new Set((details.reviews?.nodes || []).filter(review=>review.isCopilotCodeReview).map(review=>String(review.fullDatabaseId)));
+      for (const review of reviews) review.isCopilotCodeReview = provenReviewIds.has(String(review.id));
       const review = reviewDecision(reviews, pr.head.sha, pr.user.login);
       const unresolved = details.reviewThreads.pageInfo.hasNextPage || details.reviewThreads.nodes.some(thread => !thread.isResolved);
       if (review.blocked || unresolved) { await fix(pr, comments, 'review feedback'); continue; }
       if (!review.approved) {
-        const alreadyReviewed = reviews.some(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha);
-        const incomplete = reviews.some(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha && /unable to complete|model policy|plan restrictions/i.test(r.body || ''));
+        const alreadyReviewed = reviews.some(r => isCopilotReview(r) && r.commit_id === pr.head.sha);
+        const incomplete = reviews.some(r => isCopilotReview(r) && r.commit_id === pr.head.sha && /unable to complete|model policy|plan restrictions/i.test(r.body || ''));
         if (alreadyReviewed && !incomplete) { record(`#${pr.number}: Copilot did not approve; approval settings or review findings block merging.`); continue; }
-        if (!pr.requested_reviewers.some(user => user.login === REVIEWER)) {
-          const attempts = reviews.filter(r => r.user.login === REVIEWER && r.commit_id === pr.head.sha).length;
+        if (!pr.requested_reviewers.some(user => user?.login === REVIEWER)) {
+          const attempts = reviews.filter(r => isCopilotReview(r) && r.commit_id === pr.head.sha).length;
           if (attempts >= 3) { record(`#${pr.number}: Copilot review could not complete after three attempts; holding merge.`); continue; }
           const result = await mutate(`#${pr.number}: request current-head Copilot review.`, () => github.graphql(
             'mutation($id:ID!){requestCopilotCodeReview(input:{pullRequestId:$id,reviewEffort:LITE}){success failureReason}}', { id: pr.node_id }));
@@ -147,11 +166,6 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
             throw new Error(`Copilot review rejected: ${result.requestCopilotCodeReview.failureReason}`);
           }
         }
-        continue;
-      }
-      if (pr.draft) {
-        await mutate(`#${pr.number}: mark tested and approved draft ready.`, () => github.graphql(
-          'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id}}}', { id: pr.node_id }));
         continue;
       }
       if (!pr.mergeable || pr.mergeable_state !== 'clean') {
@@ -169,6 +183,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     } catch (error) {
       core.error(`PR #${item.number}: API operation failed (${error.status || error.name}); check setup and permissions.`);
       core.setFailed(`Dependency automation failed for PR #${item.number}.`);
+      throw new Error(`Dependency automation stopped after PR #${item.number} failed; no subsequent mutations are allowed.`);
     }
   }
 
@@ -184,9 +199,16 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     }
     record(`Open backend/frontend alerts: ${alerts.length}; affected dependency groups: ${groups.size}. Other manifests are outside this automation's scope.`);
     let started = 0;
-    const activeTasks = trustedIssues.filter(issue => issue.state === 'open');
+    const openAlertIds = new Set(alerts.map(alert=>alert.number));
+    const completedTasks = deploymentReady ? trustedIssues.filter(issue=>issue.state === 'open' && issueAlertsResolved(issue,openAlertIds)) : [];
+    for (const issue of completedTasks) {
+      await mutate(`Close resolved task #${issue.number} after alert and production verification.`, () => github.rest.issues.update({
+        ...repo,issue_number:issue.number,state:'closed',state_reason:'completed',
+      }));
+    }
+    const activeTasks = trustedIssues.filter(issue => issue.state === 'open' && !completedTasks.includes(issue));
     // A failed assignment must not leave a task permanently stranded.
-    for (const issue of activeTasks.filter(issue => !issue.assignees.some(user => user.login === CODER))) {
+    for (const issue of activeTasks.filter(issue => !issue.assignees.some(isCopilotCoder))) {
       await mutate(`Assign existing dependency task #${issue.number} to Copilot.`, () => github.rest.issues.addAssignees({ ...repo,
         issue_number: issue.number, assignees: [CODER],
         agent_assignment: { target_repo: fullName, base_branch: main, custom_instructions: `Fix issue #${issue.number}; link your PR with Closes #${issue.number}.` },
@@ -221,4 +243,4 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   await core.summary.addHeading('Dependency automation').addRaw(report.join('\n\n') || 'No eligible updates.').write();
 }
 
-module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS };
+module.exports = { run, reviewDecision, testsDecision, taskKey, REQUIRED_JOBS, REVIEWER, CODER, filesInScope, ALERT_MANIFESTS, isCopilotCoder, issueAlertsResolved };

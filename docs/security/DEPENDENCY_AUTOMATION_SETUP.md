@@ -69,7 +69,7 @@ The existing `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true` setting controls producti
 1. In GitHub → Actions → Dependency remediation → Run workflow, select main, `dry_run=true` and `scan_alerts=true`.
 2. Confirm the run can inspect scoped alerts, PRs and branch protection without permission failures. A dry run creates no issues, agent tasks, review requests or merges.
 3. Verify Copilot can be assigned one controlled backend/frontend task and can approve the resulting tested head. Read-only inspection cannot prove subscription entitlements or write operations.
-4. If Copilot only comments, enable approving reviews where offered or obtain a maintainer approval. The orchestrator approves waiting CI runs only after verifying the trusted bot, exact head, unchanged workflow files and backend/frontend-only scope.
+4. If Copilot only comments, enable approving reviews where offered or obtain a maintainer approval. In Settings → Copilot → Cloud agent → Policies, disable Require approval for workflow runs. GitHub rejects Copilot runs at the fork-workflow approval API, so this one-time native policy setting is required.
 5. Once validated, run:
 
 ```bash
