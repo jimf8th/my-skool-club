@@ -92,7 +92,7 @@ Sources: `.github/workflows/ios-monthly-release.yml`, `.github/scripts/ios-relea
 - `dry_run` and `force_release` inputs are declared but do not control execution. Manual dispatch can enter the EAS build even while automatic release is disabled and `dry_run=true`.
 - The workflow builds an iOS archive but has no `eas submit` or equivalent submission step and no Apple release-completion tracking.
 - From the `mobile` working directory, manifest updates resolve `mobile/.github/ios-release-manifest.json`, while the real manifest is at the repository root. Updates are neither committed nor uploaded, and `lastSuccessfulRelease` is not advanced.
-- No Android build/submission workflow is present. The production EAS submission profile contains only an iOS target.
+- Android distribution is outside the owner's clarified scope. Google Play credentials and releases are not required.
 - Choose the desired mobile release destinations and cadence, provision signing/store credentials, run device smoke tests, submit the exact tested build, and persist build/submission/release identifiers. Store approval and actual availability must be tracked separately from a successful build.
 
 ### 5. Turn reporting into verified outcomes

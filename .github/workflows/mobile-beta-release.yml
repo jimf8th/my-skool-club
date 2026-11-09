@@ -58,7 +58,7 @@ jobs:
             }
             const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page:100});
             const platforms = [];
-            for (const platform of ['ios','android']) {
+            for (const platform of ['ios']) {
               const prefix = `mobile-beta-${platform}-`;
               const exact = releases.find(r => r.tag_name === `${prefix}${sha}`);
               if (exact?.draft) {
@@ -137,7 +137,7 @@ jobs:
           RELEASE_SHA: ${{ needs.plan.outputs.sha }}
         with:
           script: |
-            const destination = process.env.PLATFORM === 'ios' ? 'TestFlight' : 'Google Play internal testing';
+            const destination = 'TestFlight';
             await github.rest.repos.updateRelease({...context.repo, release_id:Number(process.env.RELEASE_ID), draft:false,
               body:`Commit ${process.env.RELEASE_SHA} passed CI and native Maestro public-auth smoke tests. EAS built and submitted to ${destination}. Store processing is separate from successful upload.\n\nGitHub run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`});
       - name: Preserve EAS run output

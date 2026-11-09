@@ -58,9 +58,6 @@
       "developmentClient": false,
       "ios": {
         "simulator": true
-      },
-      "android": {
-        "buildType": "apk"
       }
     }
   },
@@ -73,10 +70,6 @@
     "beta": {
       "ios": {
         "ascAppId": "6800048941"
-      },
-      "android": {
-        "track": "internal",
-        "releaseStatus": "completed"
       }
     }
   }

@@ -1,10 +1,10 @@
 # Set up dependency automation
 
-This guide configures `jimf8th/my-skool-club` for Dependabot alerts → Copilot fixes → review → tests → merge → Cloud Run → TestFlight and Google Play internal testing.
+This guide configures `jimf8th/my-skool-club` for Dependabot alerts → Copilot fixes → review → tests → merge → Cloud Run → TestFlight.
 
 The implementation must first be merged and validated on `main`. Creating tokens alone does not activate it. During setup keep `ENABLE_DEPENDENCY_AUTOMATION` and `ENABLE_MOBILE_BETA_RELEASE` unset or `false`.
 
-Never paste credentials into chat, commit them, or put them in the project `.env`. The GitHub and Expo tokens go into repository **Actions secrets**; Apple and Google submission keys are stored with Expo's app credentials. Keep recovery copies in a password manager.
+Never paste credentials into chat, commit them, or put them in the project `.env`. The GitHub and Expo tokens go into repository **Actions secrets**; Apple submission keys are stored with Expo's app credentials. Keep recovery copies in a password manager.
 
 ## 1. Enable Copilot for the GitHub account and repository
 
@@ -47,7 +47,7 @@ Use the Copilot-enabled user's token, not `GITHUB_TOKEN` or a server-to-server i
 3. If you limit token access, include this project and the permissions required for EAS builds, Workflows and submissions. The user must have access to both preview and production environments and app credentials.
 4. Copy the generated token.
 5. Return to the same GitHub Actions secrets page and add a repository secret named `EXPO_TOKEN`.
-6. Make sure your Expo plan/credits support the configured build and native Maestro jobs. During validation on November 8, Expo reported that this account's current plan does not permit Maestro jobs; this release path requires upgrading to a plan with that capability. Each platform's release includes a smoke-test build and a production build. No build was started during validation.
+6. Make sure your Expo plan/credits support the configured build and native Maestro jobs. During validation on November 8, Expo reported that this account's current plan does not permit Maestro jobs; this release path requires upgrading to a plan with that capability. Each iOS release includes a smoke-test build and a production build. No build was started during validation.
 
 See [Expo programmatic access](https://docs.expo.dev/accounts/programmatic-access/).
 
@@ -76,46 +76,23 @@ The submission key stays in Expo, not in the GitHub repo or `.env`. Existing opt
 
 See [Apple's API-key steps](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/) and [Expo's iOS submission guide](https://docs.expo.dev/submit/ios/).
 
-## 5. Configure Android signing and Google Play internal testing
+## 5. Validate the first native build and TestFlight connection
 
-You need a Google Play Developer account and the app record for `com.myskoolclub.app`.
-
-1. Sign in to [Google Cloud Console](https://console.cloud.google.com/) and select the project you use for Play publishing. It can be separate from the application's Cloud Run project.
-2. Enable the Google Play Android Developer API.
-3. Open IAM & Admin → Service Accounts → Create service account. Name it `my-skool-club-play-submit`. It does not need project Owner/Editor roles for Play submission.
-4. Open that service account → Keys → Add key → Create new key → JSON. Download and store it securely. If your organization prohibits service-account keys, follow your organization's publishing credential process instead.
-5. Open [Google Play Console](https://play.google.com/console/) → Users and permissions → Invite new users. Use the service account's email from its JSON key.
-6. Limit app access to My Skool Club. Grant permissions to view app information and release apps to testing tracks. Complete the invitation/save process. Use [Expo's current Play credential guide](https://docs.expo.dev/submit/android/) to confirm the permissions shown in your Play Console.
-7. Open the Expo project's Credentials page → Android → `com.myskoolclub.app` → Service credentials → Google Service Account key for Expo Submit. Upload the JSON key and assign it to the app. Alternatively run:
-
-```bash
-npx eas-cli@27.5.0 credentials --platform android
-```
-
-8. Select the production profile. Set up/reuse the Android upload keystore, then configure the Google service account key for Play submissions. For an existing app, preserve its existing upload/signing identity.
-9. In Play Console → the app → Testing → Internal testing, add testers or a tester list and obtain the opt-in link. Complete any required store/account declarations shown by Play Console.
-
-The `beta` submission profile selects the internal track. It does not publish a public production release. Keep the Google JSON key in Expo's credential store and your password manager, not in GitHub or `.env`.
-
-## 6. Validate the first native builds and store connections
-
-While still in `mobile`, create an initial production build for each platform interactively. This resolves signing and account requirements that unattended jobs cannot answer:
+While still in `mobile`, create an initial production iOS build interactively. This resolves signing and account requirements that unattended jobs cannot answer:
 
 ```bash
 npx eas-cli@27.5.0 build --platform ios --profile production
-npx eas-cli@27.5.0 build --platform android --profile production
 ```
 
-These commands create paid/credit-consuming builds according to your Expo plan. After each completes, record its build ID and perform one initial beta upload:
+This command creates a paid/credit-consuming build according to your Expo plan. After it completes, record its build ID and perform one initial TestFlight upload:
 
 ```bash
 npx eas-cli@27.5.0 submit --platform ios --profile beta --id YOUR_IOS_BUILD_ID
-npx eas-cli@27.5.0 submit --platform android --profile beta --id YOUR_ANDROID_BUILD_ID
 ```
 
-Confirm the builds appear in TestFlight and Play internal testing. Build/submission success and store availability are different states.
+Confirm the build appears in TestFlight. Build/submission success and store availability are different states.
 
-## 7. Apply GitHub settings after the implementation is merged
+## 6. Apply GitHub settings after the implementation is merged
 
 Install and sign in to GitHub CLI locally using an administrator account:
 
@@ -135,14 +112,14 @@ bash scripts/configure-dependency-automation.sh --apply
 
 In Repository → Settings → Code security / Dependabot, verify alerts and security updates remain enabled. Their last audited state was enabled. Keep `ENABLE_AUTOMATIC_PRODUCTION_DEPLOY=true`; the backend and bundled frontend deploy through the existing Cloud Run pipeline.
 
-## 8. Run dry runs, then activate
+## 7. Run dry runs, then activate
 
 In GitHub → Actions, select the updated main branch:
 
 1. Run Dependency remediation with `dry_run=true`, `scan_alerts=true`. Confirm it can read alerts, branch rules and PR state using the automation identity.
 2. Run Mobile beta release with `dry_run=true`. Confirm the selected commit and planned platforms. This does not start EAS or store submissions.
 3. Confirm Copilot can be assigned to one controlled issue and can produce an actual approving review on a test PR. A read-only dry run cannot prove these write operations or subscription entitlements.
-4. Start one real Mobile beta release with `dry_run=false`. Each platform runs native public-auth Maestro smoke tests, builds the production archive, and submits that exact build to its beta destination.
+4. Start one real Mobile beta release with `dry_run=false`. The iOS workflow runs native public-auth Maestro smoke tests, builds the production archive, and submits that exact build to TestFlight.
 5. After these checks, activate:
 
 ```bash
@@ -157,13 +134,13 @@ To stop new automatic merges and beta releases:
 bash scripts/configure-dependency-automation.sh --disable
 ```
 
-## 9. Watch results and recover interrupted mobile attempts
+## 8. Watch results and recover interrupted mobile attempts
 
 - GitHub Actions → Dependency remediation shows tasks, review waits, failed permissions and merges. GitHub Actions → Cloud Run Deployment verifies staging, migrations and production.
-- Mobile beta release starts after a successful main-branch Cloud Run deployment and only when mobile inputs differ from the previous beta release. The initial run has no baseline, so it plans both platforms.
+- Mobile beta release starts after a successful main-branch Cloud Run deployment and only when mobile inputs differ from the previous beta release. The initial run has no baseline, so it plans iOS.
 - Expo → Workflows holds native build, Maestro and store-submission logs.
-- GitHub prereleases named `mobile-beta-PLATFORM-SHA` record successful submissions; the EAS workflow JSON is retained as an Actions artifact. Store processing remains visible in TestFlight/Play Console.
+- GitHub prereleases named `mobile-beta-PLATFORM-SHA` record successful submissions; the EAS workflow JSON is retained as an Actions artifact. Store processing remains visible in TestFlight.
 - An unfinished attempt retains a draft prerelease to prevent duplicate paid builds/uploads. Inspect the associated EAS run first. If submission already succeeded, reconcile and publish the record; if it did not, delete the draft only after confirming no upload is in flight, then rerun. Do not delete store builds to resolve an automation retry.
 - Rotate expiring tokens by replacing the matching Actions secret. Changing the automation user's GitHub identity requires migrating existing tracked issues so their trusted author still matches the new identity.
 
-Two GitHub Actions secrets are required for this path: `DEPENDENCY_AUTOMATION_TOKEN` and `EXPO_TOKEN`. Apple and Google publishing keys and the platform signing credentials are managed through Expo.
+Two GitHub Actions secrets are required for this path: `DEPENDENCY_AUTOMATION_TOKEN` and `EXPO_TOKEN`. Apple publishing keys and iOS signing credentials are managed through Expo.

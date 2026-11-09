@@ -12,7 +12,7 @@ Follow [the step-by-step setup guide](DEPENDENCY_AUTOMATION_SETUP.md) before ena
 - Every automatic merge requires all six CI jobs on the current head, an actual current-head approval, no changes requested, resolved threads, a clean merge state and enforced up-to-date branch protection. Labels are not approval evidence. The merge uses an atomic SHA precondition.
 - Automation, deployment, signing, credential and sensitive backend configuration changes require a maintainer. Unknown risk is never classified as a low-risk patch.
 - The user-token merge emits the normal main push event. Cloud Run validates again, builds the backend and bundled frontend, verifies staging, runs migrations, deploys production and verifies health. Deployments are serialized per branch.
-- After a successful main Cloud Run deployment, relevant mobile changes start iOS and Android native smoke tests and production builds in Expo Workflows. Each exact production build is submitted to TestFlight or Play internal testing. Submission records are GitHub prereleases, with incomplete attempts held as drafts to prevent duplicates.
+- After a successful main Cloud Run deployment, relevant mobile changes start iOS native smoke tests and production builds in Expo Workflows. Each exact production build is submitted to TestFlight. Submission records are GitHub prereleases, with incomplete attempts held as drafts to prevent duplicates.
 
 ## Configuration
 
