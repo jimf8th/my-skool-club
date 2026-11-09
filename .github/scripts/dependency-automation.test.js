@@ -33,6 +33,10 @@ test('REST Copilot bot aliases are recognized without trusting a user account',(
   assert.equal(isCopilotCoder({login:'Copilot',type:'User'}),false);
   assert.equal(isCopilotCoder({login:'copilot-swe-agent[bot]',type:'Bot'}),true);
 });
+test('missing and deleted actor metadata fails closed',()=>{
+  for (const actor of [null,undefined,{}, {type:'Bot'}, {type:'Bot',login:null}]) assert.equal(isCopilotCoder(actor),false);
+  assert.equal(reviewDecision([null,{user:null,state:'APPROVED',commit_id:'head',isCopilotCodeReview:true}], 'head','author').approved,false);
+});
 test('the display alias requires GitHub review provenance, even if the author alias matches',()=>{
   const review=approval({user:{login:'Copilot',type:'Bot'}});
   assert.equal(reviewDecision([review],'head','author').approved,false);

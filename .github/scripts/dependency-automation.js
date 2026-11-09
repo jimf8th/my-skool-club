@@ -7,8 +7,8 @@ const { classifyRisk } = require('./classify-dependency-risk');
 const { protectionReady } = require('./dependency-protection');
 const REVIEWER = 'copilot-pull-request-reviewer[bot]';
 const CODER = 'copilot-swe-agent[bot]';
-const isCopilotCoder = user => user?.login === CODER || (user?.type === 'Bot' && user.login.toLowerCase() === 'copilot');
-const isCopilotReview = review => review.user.login === REVIEWER || review.isCopilotCodeReview === true;
+const isCopilotCoder = user => typeof user?.login === 'string' && (user.login === CODER || (user.type === 'Bot' && user.login.toLowerCase() === 'copilot'));
+const isCopilotReview = review => typeof review?.user?.login === 'string' && (review.user.login === REVIEWER || review.isCopilotCodeReview === true);
 const LABEL = 'dependency-automation';
 const SCOPE_MARKER = '<!-- dependency-scope:backend-frontend -->';
 const ALERT_MANIFESTS = new Set(['backend/pom.xml', 'frontend/package.json', 'frontend/package-lock.json']);
@@ -20,7 +20,7 @@ const REQUIRED_JOBS = ['Backend unit and integration tests', 'Frontend unit and 
 
 function reviewDecision(reviews, sha, author) {
   const latest = new Map();
-  for (const review of [...reviews].sort((a, b) => a.id - b.id)) {
+  for (const review of reviews.filter(review => typeof review?.user?.login === 'string').sort((a, b) => a.id - b.id)) {
     if (review.state !== 'COMMENTED') latest.set(review.user.login, review);
   }
   const active = [...latest.values()];
@@ -62,7 +62,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     return dryRun ? undefined : operation();
   };
   const issues = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', labels: LABEL, per_page: 100 });
-  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user.login === viewer
+  const trustedIssues = issues.filter(issue => !issue.pull_request && issue.user?.login === viewer
     && issue.body?.includes(SCOPE_MARKER));
   const pulls = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', base: main, per_page: 100 });
   const mainSha = (await github.rest.repos.getBranch({ ...repo, branch: main })).data.commit.sha;
@@ -80,7 +80,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
   }
 
   async function fix(pr, comments, reason) {
-    const previous = comments.filter(comment => comment.user.login === viewer && comment.body.includes('<!-- dependency-fix:'));
+    const previous = comments.filter(comment => comment.user?.login === viewer && comment.body?.includes('<!-- dependency-fix:'));
     if (previous.some(comment => comment.body.includes(`<!-- dependency-fix:${pr.head.sha} -->`))) return;
     if (previous.length >= 3) { record(`#${pr.number}: remediation limit reached; maintainer action required.`); return; }
     await mutate(`#${pr.number}: request Copilot remediation (${reason}).`, () => github.rest.issues.createComment({
@@ -93,7 +93,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
     try {
       const pr = (await github.rest.pulls.get({ ...repo, pull_number: item.number })).data;
       if (pr.head.repo?.full_name !== fullName || pr.base.ref !== main) continue;
-      const dependabot = pr.user.login === 'dependabot[bot]';
+      const dependabot = pr.user?.login === 'dependabot[bot]';
       const copilot = isCopilotCoder(pr.user);
       if (!dependabot && !copilot) continue;
       const graph = await github.graphql(`query($owner:String!,$repo:String!,$number:Int!) {
@@ -152,7 +152,7 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         const alreadyReviewed = reviews.some(r => isCopilotReview(r) && r.commit_id === pr.head.sha);
         const incomplete = reviews.some(r => isCopilotReview(r) && r.commit_id === pr.head.sha && /unable to complete|model policy|plan restrictions/i.test(r.body || ''));
         if (alreadyReviewed && !incomplete) { record(`#${pr.number}: Copilot did not approve; approval settings or review findings block merging.`); continue; }
-        if (!pr.requested_reviewers.some(user => user.login === REVIEWER)) {
+        if (!pr.requested_reviewers.some(user => user?.login === REVIEWER)) {
           const attempts = reviews.filter(r => isCopilotReview(r) && r.commit_id === pr.head.sha).length;
           if (attempts >= 3) { record(`#${pr.number}: Copilot review could not complete after three attempts; holding merge.`); continue; }
           const result = await mutate(`#${pr.number}: request current-head Copilot review.`, () => github.graphql(
