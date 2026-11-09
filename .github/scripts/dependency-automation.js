@@ -185,8 +185,11 @@ async function run({ github, context, core, dryRun = false, scanAlerts = false }
         continue;
       }
       if (retireable.length) {
-        for (const thread of retireable) await mutate(`#${pr.number}: resolve outdated machine feedback after current-head approval.`, () => github.graphql(
-          'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}',{id:thread.id}));
+        for (const thread of retireable) {
+          const result = await mutate(`#${pr.number}: resolve outdated machine feedback after current-head approval.`, () => github.graphql(
+            'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}',{id:thread.id}));
+          if (!dryRun && result?.resolveReviewThread?.thread?.isResolved !== true) throw new Error('GitHub did not confirm review-thread resolution.');
+        }
         // Native conversation protection and mergeability are re-read next run.
         continue;
       }

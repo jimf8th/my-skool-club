@@ -23,7 +23,13 @@ function harness(overrides = {}) {
     actions:{approveWorkflowRun:write('approve-ci'),listWorkflowRuns:api('runs'),listJobsForWorkflowRun:api('jobs')},
     git:{deleteRef:write('delete')},
   },
-  graphql:async(query,variables)=> query.startsWith('mutation') ? (writes.push([query.includes('markPullRequestReadyForReview')?'ready':query.includes('resolveReviewThread')?'resolve-thread':'review',variables]),{requestCopilotCodeReview:{success:true,failureReason:null}}) : ({repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}}),
+  graphql:async(query,variables)=> {
+    if (!query.startsWith('mutation')) return {repository:{pullRequest:{closingIssuesReferences:{nodes:[]},reviewThreads:{nodes:[],pageInfo:{hasNextPage:false}},...overrides.graph}}};
+    if (query.includes('markPullRequestReadyForReview')) {writes.push(['ready',variables]);return {markPullRequestReadyForReview:{pullRequest:{id:'PR_1'}}};}
+    if (query.includes('resolveReviewThread')) {writes.push(['resolve-thread',variables]);return {resolveReviewThread:{thread:{isResolved:true}}};}
+    if (query.includes('requestCopilotCodeReview')) {writes.push(['review',variables]);return {requestCopilotCodeReview:{success:true,failureReason:null}};}
+    throw new Error('Unexpected GraphQL mutation in test contract');
+  },
   request:write('retry-deployment'),
   paginate:async (method,args) => method.kind === 'runs' && args.workflow_id === 'cloud-run-deploy.yml'
     ? (overrides.deployments || [{id:2,status:'completed',conclusion:'success'}]) : ({
@@ -111,6 +117,14 @@ test('fresh approval can resolve old machine feedback but never merge with stale
 test('incomplete Lite reviews escalate to Balanced without accepting partial approval',async()=>{
   const h=harness({pages:{reviews:[{id:1,state:'COMMENTED',commit_id:'head',user:{login:REVIEWER,type:'Bot'},body:'Unable to complete this review due to plan restrictions'}]}});
   await run(h);assert.deepEqual(h.writes.map(w=>w[0]),['review']);assert.equal(h.writes[0][1].effort,'BALANCED');
+});
+test('unconfirmed thread resolution fails without merging',async()=>{
+  const thread={id:'thread',isResolved:false,isOutdated:true,comments:{nodes:[{author:{__typename:'Bot',login:'copilot-pull-request-reviewer'},pullRequestReview:{isCopilotCodeReview:true,commit:{oid:'old'}}}],pageInfo:{hasNextPage:false}}};
+  const h=harness({graph:{reviewThreads:{nodes:[thread],pageInfo:{hasNextPage:false}}}});
+  const graphql=h.github.graphql;
+  h.github.graphql=async(query,variables)=>query.includes('resolveReviewThread') ? {resolveReviewThread:{thread:{isResolved:false}}} : graphql(query,variables);
+  await assert.rejects(run(h),/automation stopped/);
+  assert.equal(h.writes.length,0);assert.ok(h.notes.some(note=>note.startsWith('FAILED')));
 });
 test('same-head remediation requests are idempotent',async()=>{
   const h=harness({pages:{reviews:[],comments:[{user:{login:'automation-user'},body:'<!-- dependency-fix:head -->'}],runs:[{id:1,name:'CI Tests',event:'pull_request',head_sha:'head',status:'completed',conclusion:'failure'}]}});

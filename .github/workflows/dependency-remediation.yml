@@ -2,7 +2,7 @@ name: Dependency remediation
 
 on:
   workflow_run:
-    workflows: ["CI Tests", "Dependency validation", "Cloud Run Deployment", "Running Copilot Code Review"]
+    workflows: ["CI Tests", "Dependency validation", "Cloud Run Deployment"]
     types: [completed]
   schedule:
     - cron: '7,22,37,52 * * * *'
